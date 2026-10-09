@@ -4,5 +4,7 @@ import { afterEach } from 'vitest'
 
 afterEach(() => {
   cleanup()
-  window.localStorage.clear()
+  if (window.localStorage) {
+    window.localStorage.clear()
+  }
 })

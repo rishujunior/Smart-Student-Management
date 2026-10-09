@@ -4,7 +4,16 @@ import { Card, CardHeader, CardTitle, CardContent } from '../../components/ui/Ca
 import { Button } from '../../components/ui/Button'
 import { Input } from '../../components/ui/Input'
 import { Bot, Sparkles, Send, BookOpen, Compass, HelpCircle } from 'lucide-react'
+import axios from 'axios'
 import api from '../../lib/api'
+
+const getAIErrorMessage = (error: unknown, fallback: string) => {
+  if (axios.isAxiosError(error)) {
+    const detail = error.response?.data?.detail
+    if (typeof detail === 'string') return detail
+  }
+  return fallback
+}
 
 export const AIAssistant: React.FC = () => {
   const [activeTab, setActiveTab] = useState<'chat' | 'questions' | 'study_plan' | 'roadmap'>('chat')
@@ -41,8 +50,8 @@ export const AIAssistant: React.FC = () => {
     try {
       const res = await api.post('/ai/ask', { query: userText })
       setMessages((prev) => [...prev, { sender: 'ai', text: res.data.response }])
-    } catch {
-      setMessages((prev) => [...prev, { sender: 'ai', text: 'Sorry, I encountered an issue processing your request.' }])
+    } catch (error) {
+      setMessages((prev) => [...prev, { sender: 'ai', text: getAIErrorMessage(error, 'Sorry, I encountered an issue processing your request.') }])
     } finally {
       setIsLoading(false)
     }
@@ -59,8 +68,8 @@ export const AIAssistant: React.FC = () => {
         count: 5,
       })
       setGeneratedQuestions(res.data.questions)
-    } catch {
-      alert('Failed to generate questions')
+    } catch (error) {
+      alert(getAIErrorMessage(error, 'Failed to generate questions'))
     } finally {
       setIsLoading(false)
     }
@@ -75,8 +84,8 @@ export const AIAssistant: React.FC = () => {
         hours_per_day: 4,
       })
       setStudyPlan(res.data.study_plan)
-    } catch {
-      alert('Failed to generate study plan')
+    } catch (error) {
+      alert(getAIErrorMessage(error, 'Failed to generate study plan'))
     } finally {
       setIsLoading(false)
     }
@@ -91,8 +100,8 @@ export const AIAssistant: React.FC = () => {
         goal: 'industry-ready',
       })
       setRoadmap(res.data.roadmap)
-    } catch {
-      alert('Failed to generate roadmap')
+    } catch (error) {
+      alert(getAIErrorMessage(error, 'Failed to generate roadmap'))
     } finally {
       setIsLoading(false)
     }

@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react'
 import { useAuth } from '../../context/AuthContext'
-import { Bell, Search, Sun, Moon, Sparkles, User as UserIcon } from 'lucide-react'
+import { Bell, Search, Sun, Moon, Sparkles, User as UserIcon, Settings } from 'lucide-react'
 import { useNavigate } from 'react-router-dom'
 
 export const Header: React.FC = () => {
@@ -11,11 +11,8 @@ export const Header: React.FC = () => {
   )
 
   useEffect(() => {
-    if (theme === 'light') {
-      document.documentElement.classList.add('light')
-    } else {
-      document.documentElement.classList.remove('light')
-    }
+    document.documentElement.classList.toggle('dark', theme === 'dark')
+    document.documentElement.classList.remove('light')
   }, [theme])
 
   const toggleTheme = () => {
@@ -39,39 +36,46 @@ export const Header: React.FC = () => {
       </div>
 
       {/* Right Controls */}
-      <div className="flex items-center gap-4">
-        {/* Quick AI Button */}
+      <div className="flex items-center gap-3">
         <button
           onClick={() => navigate('/ai-assistant')}
-          className="flex items-center gap-2 rounded-xl bg-gradient-to-r from-indigo-500/10 via-purple-500/10 to-pink-500/10 border border-purple-500/30 px-3.5 py-1.5 text-xs font-semibold text-purple-300 hover:border-purple-500/50 hover:bg-purple-500/20 transition-all shadow-sm"
+          className="flex items-center gap-2 rounded-xl border border-purple-500/30 bg-gradient-to-r from-indigo-500/10 via-purple-500/10 to-pink-500/10 px-3 py-1.5 text-xs font-semibold text-purple-300 transition-all hover:border-purple-500/60 hover:bg-purple-500/15"
         >
-          <Sparkles className="h-3.5 w-3.5 text-purple-400 fill-purple-400" />
+          <Sparkles className="h-3.5 w-3.5 fill-purple-400 text-purple-400" />
           <span>Ask Gemini AI</span>
         </button>
 
-        {/* Theme Toggle */}
+        <button
+          onClick={() => navigate('/settings')}
+          className="flex h-9 w-9 items-center justify-center rounded-xl border border-border bg-card text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
+          title="Settings"
+        >
+          <Settings className="h-4 w-4" />
+        </button>
+
         <button
           onClick={toggleTheme}
-          className="flex h-9 w-9 items-center justify-center rounded-xl border border-border bg-card text-muted-foreground hover:text-foreground hover:bg-accent transition-colors"
-          title="Toggle Theme"
+          className="flex h-9 w-9 items-center justify-center rounded-xl border border-border bg-card text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
+          type="button"
+          title={`Switch to ${theme === 'dark' ? 'light' : 'dark'} mode`}
+          aria-label={`Switch to ${theme === 'dark' ? 'light' : 'dark'} mode`}
+          aria-pressed={theme === 'dark'}
         >
           {theme === 'dark' ? <Sun className="h-4 w-4" /> : <Moon className="h-4 w-4" />}
         </button>
 
-        {/* Notifications */}
         <button
           onClick={() => navigate('/notices')}
-          className="relative flex h-9 w-9 items-center justify-center rounded-xl border border-border bg-card text-muted-foreground hover:text-foreground hover:bg-accent transition-colors"
+          className="relative flex h-9 w-9 items-center justify-center rounded-xl border border-border bg-card text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
           title="Notifications"
         >
           <Bell className="h-4 w-4" />
           <span className="absolute right-1.5 top-1.5 flex h-2 w-2">
-            <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-primary opacity-75"></span>
-            <span className="relative inline-flex rounded-full h-2 w-2 bg-primary"></span>
+            <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-primary opacity-75"></span>
+            <span className="relative inline-flex h-2 w-2 rounded-full bg-primary"></span>
           </span>
         </button>
 
-        {/* User Profile Pill */}
         <div className="flex items-center gap-3 border-l border-border pl-4">
           <div className="flex flex-col text-right">
             <span className="text-sm font-semibold text-foreground">{user?.full_name}</span>

@@ -9,7 +9,7 @@ export const Card: React.FC<React.HTMLAttributes<HTMLDivElement>> = ({
   return (
     <div
       className={cn(
-        'rounded-xl border border-border bg-card p-6 text-card-foreground shadow-sm transition-all duration-200',
+        'card-panel text-card-foreground',
         className
       )}
       {...props}

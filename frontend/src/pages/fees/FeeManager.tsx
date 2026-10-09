@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react'
+import React, { useCallback, useEffect, useState } from 'react'
 import { DashboardLayout } from '../../components/layout/DashboardLayout'
 import { Card, CardHeader, CardTitle, CardContent } from '../../components/ui/Card'
 import { Button } from '../../components/ui/Button'
@@ -24,13 +24,11 @@ export const FeeManager: React.FC = () => {
     fee_type: 'tuition',
   })
 
-  useEffect(() => {
-    fetchData()
-  }, [])
-
-  const fetchData = async () => {
+  const fetchData = useCallback(async () => {
     try {
-      if (user?.role === 'student') {
+      if (!user) return
+
+      if (user.role === 'student') {
         const studentRes = await api.get('/students/me')
         if (studentRes.data?.id) {
           const res = await api.get(`/fees/student/${studentRes.data.id}`)
@@ -43,7 +41,11 @@ export const FeeManager: React.FC = () => {
     } catch (err) {
       console.error(err)
     }
-  }
+  }, [user])
+
+  useEffect(() => {
+    fetchData()
+  }, [fetchData])
 
   const handleCreateFee = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -80,31 +82,34 @@ export const FeeManager: React.FC = () => {
             <CardTitle>Fee Records</CardTitle>
           </CardHeader>
           <CardContent>
-            <div className="divide-y divide-border/60">
-              {(fees.length > 0 ? fees : [
-                { id: '1', description: 'Semester 3 Tuition Fee', amount: 45000, amount_paid: 45000, balance: 0, payment_status: 'paid', due_date: '2024-10-15' },
-                { id: '2', description: 'Hostel & Mess Fee', amount: 25000, amount_paid: 10000, balance: 15000, payment_status: 'partial', due_date: '2024-11-01' },
-              ]).map((fee: any) => (
-                <div key={fee.id} className="py-3 flex items-center justify-between">
-                  <div>
-                    <p className="font-bold text-sm text-foreground">{fee.description}</p>
-                    <p className="text-xs text-muted-foreground">Due: {fee.due_date}</p>
+            {fees.length === 0 ? (
+              <div className="rounded-2xl border border-dashed border-border bg-accent/10 p-6 text-center text-sm text-muted-foreground">
+                No fee records found for this account.
+              </div>
+            ) : (
+              <div className="divide-y divide-border/60">
+                {fees.map((fee: any) => (
+                  <div key={fee.id} className="py-3 flex items-center justify-between">
+                    <div>
+                      <p className="font-bold text-sm text-foreground">{fee.description}</p>
+                      <p className="text-xs text-muted-foreground">Due: {fee.due_date}</p>
+                    </div>
+                    <div className="text-right">
+                      <p className="font-bold text-sm text-foreground">₹{fee.amount.toLocaleString()}</p>
+                      <span
+                        className={`inline-block px-2 py-0.5 rounded text-[10px] font-bold uppercase mt-0.5 ${
+                          fee.payment_status === 'paid'
+                            ? 'bg-emerald-500/20 text-emerald-400'
+                            : 'bg-amber-500/20 text-amber-400'
+                        }`}
+                      >
+                        {fee.payment_status}
+                      </span>
+                    </div>
                   </div>
-                  <div className="text-right">
-                    <p className="font-bold text-sm text-foreground">₹{fee.amount.toLocaleString()}</p>
-                    <span
-                      className={`inline-block px-2 py-0.5 rounded text-[10px] font-bold uppercase mt-0.5 ${
-                        fee.payment_status === 'paid'
-                          ? 'bg-emerald-500/20 text-emerald-400'
-                          : 'bg-amber-500/20 text-amber-400'
-                      }`}
-                    >
-                      {fee.payment_status}
-                    </span>
-                  </div>
-                </div>
-              ))}
-            </div>
+                ))}
+              </div>
+            )}
           </CardContent>
         </Card>
 

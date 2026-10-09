@@ -27,6 +27,7 @@ export interface Student {
   email: string
   department_id: string
   department_name?: string
+  branch?: string
   semester: number
   batch_year: number
   guardian_name?: string
@@ -78,11 +79,13 @@ export interface Course {
   code: string
   department_id: string
   department_name?: string
-  credits: number
+  credits?: number | null
   semester: number
   description?: string
   teacher_id?: string
   teacher_name?: string
+  faculty_name?: string | null
+  subject_type?: string | null
   is_active: boolean
   created_at: string
 }

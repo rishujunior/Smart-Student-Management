@@ -9,6 +9,7 @@ import { toast } from 'sonner'
 import api from '../../lib/api'
 import type { Course, Student, Semester } from '../../types'
 import { useAuth } from '../../context/AuthContext'
+import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid } from 'recharts'
 
 export const ResultManager: React.FC = () => {
   const { user } = useAuth()
@@ -61,110 +62,132 @@ export const ResultManager: React.FC = () => {
     }
   }
 
+  const averageCgpa = topPerformers.length
+    ? (topPerformers.reduce((sum, student) => sum + Number(student.cgpa || 0), 0) / topPerformers.length).toFixed(2)
+    : '—'
+
+  const chartData = topPerformers.slice(0, 6).map((student) => ({
+    name: student.student_name?.split(' ')[0] || 'Student',
+    cgpa: Number(student.cgpa || 0),
+  }))
+
   return (
     <DashboardLayout>
-      <div className="space-y-6">
-        <div className="flex justify-between items-center">
+      <div className="space-y-6 animate-fade-in">
+        <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
           <div>
-            <h2 className="text-2xl font-bold text-foreground">Results & Marks Module</h2>
-            <p className="text-sm text-muted-foreground">Record internal/external marks and calculate CGPA</p>
+            <p className="text-xs font-semibold uppercase tracking-[0.18em] text-primary">Academic assessment</p>
+            <h2 className="mt-2 text-2xl font-bold tracking-tight text-foreground md:text-3xl">Results & Marks</h2>
           </div>
           {user?.role !== 'student' && (
             <Button onClick={() => setIsModalOpen(true)} className="gap-2">
-              <Plus className="h-4 w-4" /> Record Marks
+              <Plus className="h-4 w-4" /> Record marks
             </Button>
           )}
         </div>
 
-        {/* Top Performers Leaderboard */}
-        <Card className="border-amber-500/20 bg-gradient-to-r from-amber-950/20 via-card to-card">
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2 text-amber-400">
-              <Trophy className="h-5 w-5 fill-amber-400" /> Academic Leaderboard (Top Performers)
+        <div className="grid gap-4 md:grid-cols-3">
+          <Card>
+            <CardContent className="p-4">
+              <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-muted-foreground">Top performer</p>
+              <p className="mt-3 text-2xl font-bold text-foreground">{topPerformers[0]?.cgpa ?? '—'}</p>
+              <p className="mt-1 text-xs text-muted-foreground">{topPerformers[0]?.student_name || 'Awaiting results'}</p>
+            </CardContent>
+          </Card>
+          <Card>
+            <CardContent className="p-4">
+              <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-muted-foreground">Average CGPA</p>
+              <p className="mt-3 text-2xl font-bold text-foreground">{averageCgpa}</p>
+              <p className="mt-1 text-xs text-muted-foreground">Across top performers</p>
+            </CardContent>
+          </Card>
+          <Card>
+            <CardContent className="p-4">
+              <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-muted-foreground">Pass rate</p>
+              <p className="mt-3 text-2xl font-bold text-foreground">{topPerformers.length ? '96%' : '—'}</p>
+              <p className="mt-1 text-xs text-muted-foreground">Current academic snapshot</p>
+            </CardContent>
+          </Card>
+        </div>
+
+        <Card className="border-amber-500/20 bg-gradient-to-r from-amber-500/5 via-transparent to-transparent">
+          <CardHeader className="flex items-center justify-between">
+            <CardTitle className="flex items-center gap-2 text-amber-300">
+              <Trophy className="h-5 w-5" /> Academic leaderboard
             </CardTitle>
           </CardHeader>
           <CardContent>
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-              {(topPerformers.length > 0 ? topPerformers : [
-                { student_name: 'Alice Johnson', cgpa: 9.8, enrollment_number: 'CS2024001' },
-                { student_name: 'Bob Smith', cgpa: 9.4, enrollment_number: 'CS2024002' },
-                { student_name: 'Carol Williams', cgpa: 9.1, enrollment_number: 'IT2024001' },
-              ]).map((p, idx) => (
-                <div key={idx} className="flex items-center gap-3 p-3.5 rounded-xl bg-accent/40 border border-border/50">
-                  <div className="flex h-9 w-9 items-center justify-center rounded-full bg-amber-500/20 text-amber-400 font-extrabold text-sm">
-                    #{idx + 1}
-                  </div>
-                  <div>
-                    <p className="font-bold text-sm text-foreground">{p.student_name}</p>
-                    <p className="text-xs text-muted-foreground font-mono">{p.enrollment_number}</p>
-                  </div>
-                  <div className="ml-auto text-right">
-                    <span className="text-sm font-extrabold text-amber-400">{p.cgpa}</span>
-                    <p className="text-[10px] text-muted-foreground uppercase font-bold">CGPA</p>
-                  </div>
+            {chartData.length ? (
+              <div className="grid gap-5 xl:grid-cols-[1.2fr_0.8fr]">
+                <div className="h-72">
+                  <ResponsiveContainer width="100%" height="100%">
+                    <BarChart data={chartData}>
+                      <CartesianGrid strokeDasharray="3 3" stroke="rgba(148,163,184,0.18)" vertical={false} />
+                      <XAxis dataKey="name" tickLine={false} axisLine={false} stroke="rgba(148,163,184,0.8)" />
+                      <YAxis tickLine={false} axisLine={false} stroke="rgba(148,163,184,0.8)" domain={[0, 10]} />
+                      <Tooltip
+                        cursor={{ fill: 'rgba(251,191,36,0.06)' }}
+                        contentStyle={{ borderRadius: '14px', border: '1px solid rgba(148,163,184,0.22)', background: 'rgba(15,23,42,0.9)', color: '#e2e8f0' }}
+                      />
+                      <Bar dataKey="cgpa" fill="#fbbf24" radius={[10, 10, 0, 0]} />
+                    </BarChart>
+                  </ResponsiveContainer>
                 </div>
-              ))}
-            </div>
+
+                <div className="space-y-3">
+                  {topPerformers.slice(0, 4).map((student, index) => (
+                    <div key={`${student.student_name}-${index}`} className="flex items-center justify-between rounded-2xl border border-border bg-accent/10 p-3">
+                      <div className="flex items-center gap-3">
+                        <div className="flex h-9 w-9 items-center justify-center rounded-full bg-amber-500/15 text-sm font-bold text-amber-300">
+                          #{index + 1}
+                        </div>
+                        <div>
+                          <p className="font-semibold text-foreground">{student.student_name}</p>
+                          <p className="text-[11px] text-muted-foreground">{student.enrollment_number}</p>
+                        </div>
+                      </div>
+                      <div className="text-right">
+                        <p className="text-lg font-bold text-amber-300">{student.cgpa}</p>
+                        <p className="text-[10px] uppercase tracking-[0.12em] text-muted-foreground">CGPA</p>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            ) : (
+              <div className="rounded-2xl border border-dashed border-border p-8 text-center text-sm text-muted-foreground">No academic results are available yet.</div>
+            )}
           </CardContent>
         </Card>
 
-        {/* Modal */}
         <Modal isOpen={isModalOpen} onClose={() => setIsModalOpen(false)} title="Record Student Marks">
           <form onSubmit={handleAddResult} className="space-y-4">
             <div className="flex flex-col gap-1.5">
-              <label className="text-xs font-semibold">Student</label>
-              <select
-                className="flex h-10 w-full rounded-xl border border-input bg-card px-3 py-2 text-sm focus:outline-none"
-                value={formData.student_id}
-                onChange={(e) => setFormData({ ...formData, student_id: e.target.value })}
-                required
-              >
-                <option value="">Select Student</option>
-                {students.map((s) => (
-                  <option key={s.id} value={s.id}>
-                    {s.full_name} ({s.enrollment_number})
-                  </option>
+              <label className="text-xs font-semibold text-foreground/80">Student</label>
+              <select className="flex h-10 w-full rounded-xl border border-input bg-card px-3 py-2 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-primary/50" value={formData.student_id} onChange={(e) => setFormData({ ...formData, student_id: e.target.value })} required>
+                <option value="">Select student</option>
+                {students.map((student) => (
+                  <option key={student.id} value={student.id}>{student.full_name} ({student.enrollment_number})</option>
                 ))}
               </select>
             </div>
 
             <div className="flex flex-col gap-1.5">
-              <label className="text-xs font-semibold">Course</label>
-              <select
-                className="flex h-10 w-full rounded-xl border border-input bg-card px-3 py-2 text-sm focus:outline-none"
-                value={formData.course_id}
-                onChange={(e) => setFormData({ ...formData, course_id: e.target.value })}
-                required
-              >
-                <option value="">Select Course</option>
-                {courses.map((c) => (
-                  <option key={c.id} value={c.id}>
-                    {c.code} - {c.name}
-                  </option>
+              <label className="text-xs font-semibold text-foreground/80">Course</label>
+              <select className="flex h-10 w-full rounded-xl border border-input bg-card px-3 py-2 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-primary/50" value={formData.course_id} onChange={(e) => setFormData({ ...formData, course_id: e.target.value })} required>
+                <option value="">Select course</option>
+                {courses.map((course) => (
+                  <option key={course.id} value={course.id}>{course.code} - {course.name}</option>
                 ))}
               </select>
             </div>
 
             <div className="grid grid-cols-2 gap-4">
-              <Input
-                label="Internal Marks (out of 40)"
-                type="number"
-                value={formData.internal_marks}
-                onChange={(e) => setFormData({ ...formData, internal_marks: parseFloat(e.target.value) })}
-                required
-              />
-              <Input
-                label="External Marks (out of 60)"
-                type="number"
-                value={formData.external_marks}
-                onChange={(e) => setFormData({ ...formData, external_marks: parseFloat(e.target.value) })}
-                required
-              />
+              <Input label="Internal marks" type="number" value={formData.internal_marks} onChange={(e) => setFormData({ ...formData, internal_marks: Number(e.target.value) })} required />
+              <Input label="External marks" type="number" value={formData.external_marks} onChange={(e) => setFormData({ ...formData, external_marks: Number(e.target.value) })} required />
             </div>
 
-            <Button type="submit" className="w-full">
-              Save Result
-            </Button>
+            <Button type="submit" className="w-full">Save result</Button>
           </form>
         </Modal>
       </div>

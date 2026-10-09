@@ -2,7 +2,7 @@ import React, { useEffect, useState } from 'react'
 import { DashboardLayout } from '../../components/layout/DashboardLayout'
 import { StatCard } from '../../components/ui/StatCard'
 import { Card, CardHeader, CardTitle, CardContent } from '../../components/ui/Card'
-import { Users, GraduationCap, Building2, CalendarCheck, Activity } from 'lucide-react'
+import { Users, GraduationCap, Building2, CalendarCheck, Activity, ArrowUpRight, Sparkles } from 'lucide-react'
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, PieChart, Pie, Cell } from 'recharts'
 import api from '../../lib/api'
 import type { DashboardStats } from '../../types'
@@ -25,140 +25,138 @@ export const AdminDashboard: React.FC = () => {
     fetchDashboard()
   }, [])
 
-  const COLORS = ['#667eea', '#764ba2', '#38ef7d', '#f093fb', '#4facfe']
+  const COLORS = ['#5b6cff', '#8b5cf6', '#34d399', '#fbbf24', '#60a5fa']
+
+  if (loading) {
+    return (
+      <DashboardLayout>
+        <div className="space-y-6 animate-fade-in">
+          <div className="h-36 rounded-2xl border border-border bg-card/80" />
+          <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-4">
+            {Array.from({ length: 4 }).map((_, index) => (
+              <div key={index} className="h-32 rounded-2xl border border-border bg-card/80" />
+            ))}
+          </div>
+          <div className="grid grid-cols-1 gap-6 xl:grid-cols-3">
+            <div className="h-80 rounded-2xl border border-border bg-card/80 xl:col-span-2" />
+            <div className="h-80 rounded-2xl border border-border bg-card/80" />
+          </div>
+        </div>
+      </DashboardLayout>
+    )
+  }
+
+  const overview = stats?.overview
+  const hasStats = Boolean(stats)
 
   return (
     <DashboardLayout>
-      <div className="space-y-6">
-        {/* Welcome Banner */}
-        <div className="rounded-2xl bg-gradient-to-r from-indigo-900/40 via-purple-900/40 to-slate-900/40 border border-indigo-500/20 p-6 backdrop-blur-xl relative overflow-hidden">
-          <div className="absolute top-0 right-0 w-96 h-96 bg-primary/10 rounded-full blur-3xl -z-10"></div>
-          <h2 className="text-2xl font-bold text-foreground">Administrator Dashboard</h2>
-          <p className="text-sm text-muted-foreground mt-1">
-            System Overview & Institution Analytics • Real-time Monitoring
-          </p>
+      <div className="space-y-6 animate-fade-in">
+        <div className="relative overflow-hidden rounded-3xl border border-primary/20 bg-gradient-to-r from-indigo-950/40 via-violet-950/30 to-slate-950/50 p-6 shadow-[0_30px_60px_-32px_rgba(79,70,229,0.75)]">
+          <div className="absolute right-0 top-0 h-52 w-52 rounded-full bg-primary/15 blur-3xl" />
+          <div className="relative flex flex-col gap-4 md:flex-row md:items-end md:justify-between">
+            <div>
+              <div className="mb-3 inline-flex items-center gap-2 rounded-full border border-primary/20 bg-primary/10 px-3 py-1 text-[10px] font-semibold uppercase tracking-[0.18em] text-primary">
+                <Sparkles className="h-3.5 w-3.5" />
+                Institutional Overview
+              </div>
+              <h2 className="text-2xl font-bold tracking-tight text-foreground md:text-3xl">Administrator Dashboard</h2>
+              <p className="mt-2 max-w-2xl text-sm text-muted-foreground">
+                Real-time academic performance, student engagement, and operational health across the campus.
+              </p>
+            </div>
+            <div className="flex items-center gap-2 rounded-full border border-emerald-500/20 bg-emerald-500/10 px-3 py-1.5 text-xs font-medium text-emerald-300">
+              <span className="inline-flex h-2 w-2 rounded-full bg-emerald-400" />
+              System online
+            </div>
+          </div>
         </div>
 
-        {/* Stats Grid */}
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-          <StatCard
-            title="Total Students"
-            value={stats?.overview.total_students ?? (loading ? '...' : 0)}
-            description="Active Enrolled Students"
-            icon={GraduationCap}
-            color="blue"
-          />
-          <StatCard
-            title="Faculty Members"
-            value={stats?.overview.total_teachers ?? (loading ? '...' : 0)}
-            description="Teaching Staff"
-            icon={Users}
-            color="purple"
-          />
-          <StatCard
-            title="Departments"
-            value={stats?.overview.total_departments ?? (loading ? '...' : 0)}
-            description="Academic Divisions"
-            icon={Building2}
-            color="emerald"
-          />
-          <StatCard
-            title="Attendance Rate"
-            value={stats?.overview.attendance_rate ? `${stats.overview.attendance_rate}%` : '88.5%'}
-            description="Monthly Average"
-            icon={CalendarCheck}
-            color="amber"
-          />
+        <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-4">
+          <StatCard title="Total Students" value={overview?.total_students ?? 0} description="Active enrolled learners" icon={GraduationCap} color="blue" />
+          <StatCard title="Faculty Members" value={overview?.total_teachers ?? 0} description="Teaching staff on record" icon={Users} color="purple" />
+          <StatCard title="Departments" value={overview?.total_departments ?? 0} description="Academic divisions" icon={Building2} color="emerald" />
+          <StatCard title="Attendance Rate" value={overview?.attendance_rate ? `${overview.attendance_rate}%` : '0%'} description="Campus average" icon={CalendarCheck} color="amber" />
         </div>
 
-        {/* Charts Row */}
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-          {/* Enrollment Trend Bar Chart */}
-          <Card className="lg:col-span-2">
-            <CardHeader>
-              <CardTitle>Enrollment Growth Trend</CardTitle>
+        <div className="grid grid-cols-1 gap-6 xl:grid-cols-3">
+          <Card className="xl:col-span-2">
+            <CardHeader className="flex items-center justify-between">
+              <CardTitle>Enrollment Growth</CardTitle>
+              <span className="inline-flex items-center gap-1 text-xs font-medium text-emerald-400">
+                <ArrowUpRight className="h-3.5 w-3.5" />
+                {hasStats ? 'Updated' : 'Awaiting data'}
+              </span>
             </CardHeader>
-            <CardContent className="h-72">
-              <ResponsiveContainer width="100%" height="100%">
-                <BarChart data={stats?.enrollment_trend || [
-                  { month: 'Jan', count: 120 },
-                  { month: 'Feb', count: 145 },
-                  { month: 'Mar', count: 180 },
-                  { month: 'Apr', count: 210 },
-                  { month: 'May', count: 250 },
-                  { month: 'Jun', count: 310 },
-                ]}>
-                  <CartesianGrid strokeDasharray="3 3" stroke="#2d3748" />
-                  <XAxis dataKey="month" stroke="#a0aec0" />
-                  <YAxis stroke="#a0aec0" />
-                  <Tooltip contentStyle={{ backgroundColor: '#1a202c', borderColor: '#2d3748', borderRadius: '12px' }} />
-                  <Bar dataKey="count" fill="#667eea" radius={[8, 8, 0, 0]} />
-                </BarChart>
-              </ResponsiveContainer>
+            <CardContent className="h-80">
+              {stats?.enrollment_trend?.length ? (
+                <ResponsiveContainer width="100%" height="100%">
+                  <BarChart data={stats.enrollment_trend}>
+                    <CartesianGrid strokeDasharray="3 3" stroke="rgba(148,163,184,0.18)" vertical={false} />
+                    <XAxis dataKey="month" tickLine={false} axisLine={false} stroke="rgba(148,163,184,0.8)" />
+                    <YAxis tickLine={false} axisLine={false} stroke="rgba(148,163,184,0.8)" />
+                    <Tooltip
+                      cursor={{ fill: 'rgba(99,102,241,0.06)' }}
+                      contentStyle={{ borderRadius: '14px', border: '1px solid rgba(148,163,184,0.22)', background: 'rgba(15,23,42,0.9)', color: '#e2e8f0' }}
+                    />
+                    <Bar dataKey="count" fill="#5b6cff" radius={[10, 10, 0, 0]} />
+                  </BarChart>
+                </ResponsiveContainer>
+              ) : (
+                <div className="flex h-full items-center justify-center text-sm text-muted-foreground">No enrollment data available yet.</div>
+              )}
             </CardContent>
           </Card>
 
-          {/* Department Distribution Pie Chart */}
           <Card>
             <CardHeader>
-              <CardTitle>Department Distribution</CardTitle>
+              <CardTitle>Department Mix</CardTitle>
             </CardHeader>
-            <CardContent className="h-72 flex flex-col items-center justify-center">
-              <ResponsiveContainer width="100%" height="100%">
-                <PieChart>
-                  <Pie
-                    data={stats?.department_distribution || [
-                      { department: 'CSE', count: 150 },
-                      { department: 'ECE', count: 90 },
-                      { department: 'IT', count: 80 },
-                      { department: 'ME', count: 60 },
-                    ]}
-                    cx="50%"
-                    cy="50%"
-                    innerRadius={55}
-                    outerRadius={85}
-                    paddingAngle={5}
-                    dataKey="count"
-                    nameKey="department"
-                  >
-                    {(stats?.department_distribution || [1,2,3,4]).map((_, index) => (
-                      <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
-                    ))}
-                  </Pie>
-                  <Tooltip contentStyle={{ backgroundColor: '#1a202c', borderColor: '#2d3748', borderRadius: '12px' }} />
-                </PieChart>
-              </ResponsiveContainer>
+            <CardContent className="h-80">
+              {stats?.department_distribution?.length ? (
+                <ResponsiveContainer width="100%" height="100%">
+                  <PieChart>
+                    <Pie data={stats.department_distribution} dataKey="count" nameKey="department" innerRadius={48} outerRadius={82} paddingAngle={4}>
+                      {stats.department_distribution.map((entry, index) => (
+                        <Cell key={`${entry.department}-${index}`} fill={COLORS[index % COLORS.length]} />
+                      ))}
+                    </Pie>
+                    <Tooltip contentStyle={{ borderRadius: '14px', border: '1px solid rgba(148,163,184,0.22)', background: 'rgba(15,23,42,0.9)', color: '#e2e8f0' }} />
+                  </PieChart>
+                </ResponsiveContainer>
+              ) : (
+                <div className="flex h-full items-center justify-center text-sm text-muted-foreground">No department breakdown available yet.</div>
+              )}
             </CardContent>
           </Card>
         </div>
 
-        {/* Activity & Quick Actions */}
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-          <Card className="lg:col-span-2">
-            <CardHeader className="flex flex-row items-center justify-between">
+        <div className="grid grid-cols-1 gap-6 xl:grid-cols-[1.5fr_1fr]">
+          <Card>
+            <CardHeader className="flex items-center justify-between">
               <CardTitle className="flex items-center gap-2">
-                <Activity className="h-5 w-5 text-primary" /> System Activity Logs
+                <Activity className="h-4 w-4 text-primary" /> Recent Activity
               </CardTitle>
             </CardHeader>
             <CardContent>
               <div className="space-y-3">
-                {(stats?.recent_activities || [
-                  { id: '1', action: 'LOGIN', description: 'Prof. Sharma logged into teacher portal', created_at: new Date().toISOString() },
-                  { id: '2', action: 'CREATE', description: 'New course CS301 added to Computer Science', created_at: new Date().toISOString() },
-                  { id: '3', action: 'SUBMIT', description: 'Alice Johnson submitted Assignment 2', created_at: new Date().toISOString() },
-                ]).map((log) => (
-                  <div key={log.id} className="flex items-center justify-between p-3 rounded-xl bg-accent/30 border border-border/40 text-xs">
-                    <div className="flex items-center gap-3">
-                      <span className="px-2 py-0.5 rounded-full bg-primary/20 text-primary font-bold">
-                        {log.action}
+                {stats?.recent_activities?.length ? (
+                  stats.recent_activities.map((log) => (
+                    <div key={log.id} className="flex items-center justify-between gap-4 rounded-2xl border border-border bg-accent/20 p-3 transition-all hover:border-primary/20 hover:bg-accent/30">
+                      <div className="flex items-center gap-3">
+                        <span className="inline-flex rounded-full border border-primary/20 bg-primary/10 px-2 py-0.5 text-[10px] font-bold uppercase tracking-[0.14em] text-primary">
+                          {log.action}
+                        </span>
+                        <span className="text-sm text-foreground">{log.description}</span>
+                      </div>
+                      <span className="shrink-0 text-[11px] font-medium text-muted-foreground">
+                        {new Date(log.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
                       </span>
-                      <span className="text-foreground">{log.description}</span>
                     </div>
-                    <span className="text-muted-foreground font-mono">
-                      {new Date(log.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
-                    </span>
-                  </div>
-                ))}
+                  ))
+                ) : (
+                  <div className="rounded-2xl border border-dashed border-border p-6 text-center text-sm text-muted-foreground">No recent activity available.</div>
+                )}
               </div>
             </CardContent>
           </Card>
@@ -168,18 +166,18 @@ export const AdminDashboard: React.FC = () => {
               <CardTitle>System Health</CardTitle>
             </CardHeader>
             <CardContent className="space-y-4">
-              <div className="flex items-center justify-between p-3 rounded-xl bg-emerald-500/10 border border-emerald-500/20">
-                <span className="text-xs font-semibold text-emerald-400">Database (MongoDB)</span>
-                <span className="px-2 py-0.5 rounded-full bg-emerald-500/20 text-emerald-300 text-[10px] font-bold">Connected</span>
-              </div>
-              <div className="flex items-center justify-between p-3 rounded-xl bg-blue-500/10 border border-blue-500/20">
-                <span className="text-xs font-semibold text-blue-400">AI Engine (Gemini)</span>
-                <span className="px-2 py-0.5 rounded-full bg-blue-500/20 text-blue-300 text-[10px] font-bold">Operational</span>
-              </div>
-              <div className="flex items-center justify-between p-3 rounded-xl bg-purple-500/10 border border-purple-500/20">
-                <span className="text-xs font-semibold text-purple-400">JWT Auth Service</span>
-                <span className="px-2 py-0.5 rounded-full bg-purple-500/20 text-purple-300 text-[10px] font-bold">Active</span>
-              </div>
+              {[
+                { name: 'MongoDB', status: 'Connected', tone: 'emerald', color: 'text-emerald-400' },
+                { name: 'Gemini API', status: 'Operational', tone: 'blue', color: 'text-blue-400' },
+                { name: 'Authentication', status: 'Healthy', tone: 'purple', color: 'text-violet-400' },
+              ].map((item) => (
+                <div key={item.name} className={`flex items-center justify-between rounded-2xl border border-${item.tone}-500/20 bg-${item.tone}-500/10 p-3`}>
+                  <span className={`text-xs font-semibold ${item.color}`}>{item.name}</span>
+                  <span className="rounded-full border border-current/20 bg-current/5 px-2 py-0.5 text-[10px] font-bold uppercase tracking-[0.14em] text-current">
+                    {item.status}
+                  </span>
+                </div>
+              ))}
             </CardContent>
           </Card>
         </div>

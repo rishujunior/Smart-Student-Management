@@ -1,5 +1,11 @@
-from fastapi import APIRouter, Depends
-from app.schemas.misc import AIQueryRequest, GenerateQuestionsRequest, StudyPlanRequest, SummarizeRequest
+from fastapi import APIRouter, Body, Depends, HTTPException, Query, status
+from app.schemas.misc import (
+    AIQueryRequest,
+    GenerateQuestionsRequest,
+    LearningRoadmapRequest,
+    StudyPlanRequest,
+    SummarizeRequest,
+)
 from app.services.ai_service import ai_service
 from app.services.academic_service import result_service
 from app.services.user_service import student_service
@@ -79,11 +85,20 @@ async def recommend_subject_improvements(student_id: str, _=Depends(get_current_
 
 @router.post("/learning-roadmap")
 async def generate_learning_roadmap(
-    subject: str,
+    subject: str = Query(default=None),
     current_level: str = "beginner",
     goal: str = "job-ready",
+    data: LearningRoadmapRequest | None = Body(default=None),
     _=Depends(get_current_user),
 ):
     """Generate a personalized learning roadmap"""
+    subject = data.subject if data else subject
+    current_level = data.current_level if data else current_level
+    goal = data.goal if data else goal
+    if not subject:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail="A subject is required to generate a learning roadmap.",
+        )
     roadmap = await ai_service.generate_learning_roadmap(subject, current_level, goal)
     return {"roadmap": roadmap, "subject": subject}

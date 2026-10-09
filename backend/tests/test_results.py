@@ -72,6 +72,56 @@ async def _setup_student_with_course(client: AsyncClient, admin_token: str, auth
 
 
 class TestResults:
+    async def test_teacher_is_forbidden_from_result_read_and_write_endpoints(
+        self, client: AsyncClient, unique_email, auth_headers
+    ):
+        registration = await client.post(
+            "/api/v1/auth/register",
+            json={
+                "email": unique_email("resultsforbiddenteacher"),
+                "password": "testpassword123",
+                "full_name": "Results Forbidden Teacher",
+                "role": "teacher",
+            },
+        )
+        headers = auth_headers(registration.json()["access_token"])
+        result_payload = {
+            "student_id": "507f1f77bcf86cd799439011",
+            "course_id": "507f1f77bcf86cd799439012",
+            "semester_id": "507f1f77bcf86cd799439013",
+            "internal_marks": 20,
+            "external_marks": 30,
+        }
+
+        reads = await client.get("/api/v1/results/student/507f1f77bcf86cd799439011", headers=headers)
+        create = await client.post("/api/v1/results", json=result_payload, headers=headers)
+        update = await client.put(
+            "/api/v1/results/507f1f77bcf86cd799439014",
+            json={"internal_marks": 25},
+            headers=headers,
+        )
+
+        assert reads.status_code == 403
+        assert create.status_code == 403
+        assert update.status_code == 403
+
+    async def test_student_retains_result_read_access(self, client: AsyncClient, unique_email, auth_headers):
+        registration = await client.post(
+            "/api/v1/auth/register",
+            json={
+                "email": unique_email("resultsstudentviewer"),
+                "password": "testpassword123",
+                "full_name": "Results Student Viewer",
+                "role": "student",
+            },
+        )
+        response = await client.get(
+            "/api/v1/results/student/507f1f77bcf86cd799439011",
+            headers=auth_headers(registration.json()["access_token"]),
+        )
+
+        assert response.status_code == 200
+
     async def test_add_result_calculates_grade_and_percentage(
         self, client: AsyncClient, admin_token: str, auth_headers, unique_email
     ):

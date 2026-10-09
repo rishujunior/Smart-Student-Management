@@ -76,6 +76,9 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   )
 }
 
+// This hook remains here so the existing import path continues to work while
+// React Fast Refresh keeps the provider and hook in the same file.
+// eslint-disable-next-line react-refresh/only-export-components
 export const useAuth = () => {
   const context = useContext(AuthContext)
   if (!context) {

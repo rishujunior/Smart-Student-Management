@@ -92,12 +92,12 @@ async def _enrich_course(course_id: str) -> dict:
         raise HTTPException(status_code=404, detail="Course not found")
 
     dept = await depts_col.find_one({"_id": ObjectId(course["department_id"])}) if course.get("department_id") else None
-    teacher_name = None
+    teacher_name = course.get("faculty_name")
     if course.get("teacher_id"):
         teacher = await teachers_col.find_one({"_id": ObjectId(course["teacher_id"])})
         if teacher:
             user = await users_col.find_one({"_id": ObjectId(teacher["user_id"])})
-            teacher_name = user["full_name"] if user else None
+            teacher_name = user["full_name"] if user else teacher_name
 
     course["id"] = str(course.pop("_id"))
     course["department_name"] = dept["name"] if dept else None
@@ -110,10 +110,11 @@ async def list_courses(
     department_id: Optional[str] = None,
     semester: Optional[int] = None,
     teacher_id: Optional[str] = None,
+    include_inactive: bool = False,
     _=Depends(get_current_user),
 ):
     col = get_collection("courses")
-    query = {}
+    query = {} if include_inactive else {"is_active": {"$ne": False}}
     if department_id:
         query["department_id"] = department_id
     if semester:

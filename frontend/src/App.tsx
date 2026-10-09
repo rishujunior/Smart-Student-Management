@@ -1,11 +1,11 @@
 import React from 'react'
-import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom'
+import { BrowserRouter as Router, Routes, Route, Navigate, useLocation } from 'react-router-dom'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
+import { AnimatePresence, motion } from 'framer-motion'
 import { Toaster } from 'sonner'
 import { AuthProvider } from './context/AuthContext'
 import { ProtectedRoute } from './components/ProtectedRoute'
 
-// Pages
 import { Login } from './pages/auth/Login'
 import { Register } from './pages/auth/Register'
 import { ForgotPassword } from './pages/auth/ForgotPassword'
@@ -23,6 +23,8 @@ import { AIAssistant } from './pages/ai/AIAssistant'
 import { FeeManager } from './pages/fees/FeeManager'
 import { NoticeBoard } from './pages/notifications/NoticeBoard'
 import { ReportsPage } from './pages/reports/ReportsPage'
+import { SettingsPage } from './pages/settings/SettingsPage'
+import { Unauthorized } from './pages/auth/Unauthorized'
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -32,6 +34,61 @@ const queryClient = new QueryClient({
     },
   },
 })
+
+const routeTransition = {
+  initial: { opacity: 0, y: 12 },
+  animate: { opacity: 1, y: 0 },
+  exit: { opacity: 0, y: -10 },
+  transition: { duration: 0.2, ease: 'easeOut' as const },
+}
+
+const AnimatedPage: React.FC<{ children: React.ReactNode }> = ({ children }) => (
+  <motion.div
+    initial={routeTransition.initial}
+    animate={routeTransition.animate}
+    exit={routeTransition.exit}
+    transition={routeTransition.transition}
+  >
+    {children}
+  </motion.div>
+)
+
+const AppRoutes: React.FC = () => {
+  const location = useLocation()
+
+  return (
+    <AnimatePresence mode="wait">
+      <Routes location={location} key={location.pathname}>
+        <Route path="/login" element={<AnimatedPage><Login /></AnimatedPage>} />
+        <Route path="/register" element={<AnimatedPage><Register /></AnimatedPage>} />
+        <Route path="/forgot-password" element={<AnimatedPage><ForgotPassword /></AnimatedPage>} />
+
+        <Route element={<ProtectedRoute />}>
+          <Route path="/admin/dashboard" element={<AnimatedPage><AdminDashboard /></AnimatedPage>} />
+          <Route path="/student/dashboard" element={<AnimatedPage><StudentDashboard /></AnimatedPage>} />
+          <Route path="/teacher/dashboard" element={<AnimatedPage><TeacherDashboard /></AnimatedPage>} />
+          <Route path="/students" element={<ProtectedRoute allowedRoles={['admin']}><AnimatedPage><StudentList /></AnimatedPage></ProtectedRoute>} />
+          <Route path="/teachers" element={<ProtectedRoute allowedRoles={['admin']}><AnimatedPage><TeacherList /></AnimatedPage></ProtectedRoute>} />
+          <Route path="/departments" element={<ProtectedRoute allowedRoles={['admin']}><AnimatedPage><Departments /></AnimatedPage></ProtectedRoute>} />
+          <Route path="/courses" element={<ProtectedRoute allowedRoles={['admin', 'teacher', 'student']}><AnimatedPage><Courses /></AnimatedPage></ProtectedRoute>} />
+          <Route path="/attendance" element={<ProtectedRoute allowedRoles={['admin', 'teacher', 'student']}><AnimatedPage><AttendanceManager /></AnimatedPage></ProtectedRoute>} />
+          <Route path="/results" element={<ProtectedRoute allowedRoles={['admin', 'student']}><AnimatedPage><ResultManager /></AnimatedPage></ProtectedRoute>} />
+          <Route path="/assignments" element={<ProtectedRoute allowedRoles={['admin', 'teacher', 'student']}><AnimatedPage><AssignmentList /></AnimatedPage></ProtectedRoute>} />
+          <Route path="/ai-assistant" element={<ProtectedRoute allowedRoles={['admin', 'teacher', 'student']}><AnimatedPage><AIAssistant /></AnimatedPage></ProtectedRoute>} />
+          <Route path="/fees" element={<ProtectedRoute allowedRoles={['admin', 'student']}><AnimatedPage><FeeManager /></AnimatedPage></ProtectedRoute>} />
+          <Route path="/notices" element={<ProtectedRoute allowedRoles={['admin', 'teacher', 'student']}><AnimatedPage><NoticeBoard /></AnimatedPage></ProtectedRoute>} />
+          <Route path="/reports" element={<ProtectedRoute allowedRoles={['admin', 'teacher', 'student']}><AnimatedPage><ReportsPage /></AnimatedPage></ProtectedRoute>} />
+          <Route path="/settings" element={<ProtectedRoute allowedRoles={['admin', 'teacher', 'student']}><AnimatedPage><SettingsPage /></AnimatedPage></ProtectedRoute>} />
+        </Route>
+
+        <Route path="/unauthorized" element={<AnimatedPage><Unauthorized /></AnimatedPage>} />
+
+        <Route path="/" element={<Navigate to="/login" replace />} />
+        <Route path="*" element={<Navigate to="/login" replace />} />
+      </Routes>
+    </AnimatePresence>
+  )
+}
 
 export const App: React.FC = () => {
   return (
@@ -50,34 +107,7 @@ export const App: React.FC = () => {
           }}
         />
         <Router>
-          <Routes>
-            {/* Public Routes */}
-            <Route path="/login" element={<Login />} />
-            <Route path="/register" element={<Register />} />
-            <Route path="/forgot-password" element={<ForgotPassword />} />
-
-            {/* Protected Routes */}
-            <Route element={<ProtectedRoute />}>
-              <Route path="/admin/dashboard" element={<AdminDashboard />} />
-              <Route path="/student/dashboard" element={<StudentDashboard />} />
-              <Route path="/teacher/dashboard" element={<TeacherDashboard />} />
-              <Route path="/students" element={<StudentList />} />
-              <Route path="/teachers" element={<TeacherList />} />
-              <Route path="/departments" element={<Departments />} />
-              <Route path="/courses" element={<Courses />} />
-              <Route path="/attendance" element={<AttendanceManager />} />
-              <Route path="/results" element={<ResultManager />} />
-              <Route path="/assignments" element={<AssignmentList />} />
-              <Route path="/ai-assistant" element={<AIAssistant />} />
-              <Route path="/fees" element={<FeeManager />} />
-              <Route path="/notices" element={<NoticeBoard />} />
-              <Route path="/reports" element={<ReportsPage />} />
-            </Route>
-
-            {/* Fallback */}
-            <Route path="/" element={<Navigate to="/login" replace />} />
-            <Route path="*" element={<Navigate to="/login" replace />} />
-          </Routes>
+          <AppRoutes />
         </Router>
       </AuthProvider>
     </QueryClientProvider>

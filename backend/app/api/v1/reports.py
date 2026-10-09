@@ -1,6 +1,6 @@
 from fastapi import APIRouter, Depends, HTTPException
 from fastapi.responses import StreamingResponse
-from app.core.dependencies import get_current_user, get_current_admin
+from app.core.dependencies import get_current_user, get_current_admin, get_current_teacher
 from app.services.academic_service import result_service, attendance_service
 from app.services.user_service import student_service
 from app.core.database import get_collection
@@ -126,12 +126,19 @@ async def generate_student_report_pdf(student_id: str, _=Depends(get_current_use
 
 
 @router.get("/attendance/excel")
-async def export_attendance_excel(course_id: str, _=Depends(get_current_user)):
+async def export_attendance_excel(
+    course_id: str,
+    date: str | None = None,
+    from_date: str | None = None,
+    to_date: str | None = None,
+    current_user: dict = Depends(get_current_teacher),
+):
     """Export attendance as Excel file"""
     import openpyxl
     from openpyxl.styles import PatternFill, Font, Alignment
 
-    records = await attendance_service.get_course_attendance(course_id)
+    await attendance_service.get_manageable_course(course_id, current_user)
+    records = await attendance_service.get_course_attendance(course_id, date, from_date, to_date)
 
     wb = openpyxl.Workbook()
     ws = wb.active
@@ -140,7 +147,7 @@ async def export_attendance_excel(course_id: str, _=Depends(get_current_user)):
     header_fill = PatternFill(start_color="1e3a5f", end_color="1e3a5f", fill_type="solid")
     header_font = Font(color="FFFFFF", bold=True)
 
-    headers = ["Student Name", "Date", "Status", "Course"]
+    headers = ["Enrollment Number", "Student Name", "Date", "Status", "Course"]
     for col, header in enumerate(headers, 1):
         cell = ws.cell(row=1, column=col, value=header)
         cell.fill = header_fill
@@ -148,10 +155,11 @@ async def export_attendance_excel(course_id: str, _=Depends(get_current_user)):
         cell.alignment = Alignment(horizontal="center")
 
     for row, record in enumerate(records, 2):
-        ws.cell(row=row, column=1, value=record.get("student_name", ""))
-        ws.cell(row=row, column=2, value=str(record.get("date", "")))
-        ws.cell(row=row, column=3, value=record.get("status", ""))
-        ws.cell(row=row, column=4, value=record.get("course_id", ""))
+        ws.cell(row=row, column=1, value=record.get("enrollment_number", ""))
+        ws.cell(row=row, column=2, value=record.get("student_name", ""))
+        ws.cell(row=row, column=3, value=str(record.get("date", ""))[:10])
+        ws.cell(row=row, column=4, value=record.get("status", ""))
+        ws.cell(row=row, column=5, value=record.get("course_name", ""))
 
     for col in ws.columns:
         max_length = max(len(str(cell.value or "")) for cell in col)
@@ -164,5 +172,5 @@ async def export_attendance_excel(course_id: str, _=Depends(get_current_user)):
     return StreamingResponse(
         buffer,
         media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-        headers={"Content-Disposition": f"attachment; filename=attendance_{course_id}.xlsx"},
+        headers={"Content-Disposition": f"attachment; filename=attendance_{course_id}_{date or 'history'}.xlsx"},
     )

@@ -16,6 +16,7 @@ import {
   FileBarChart,
   LogOut,
   Sparkles,
+  Settings2,
 } from 'lucide-react'
 import { cn } from '../../lib/utils'
 
@@ -42,7 +43,7 @@ export const Sidebar: React.FC = () => {
       title: 'Students',
       href: '/students',
       icon: GraduationCap,
-      roles: ['admin', 'teacher'],
+      roles: ['admin'],
     },
     {
       title: 'Teachers',
@@ -72,7 +73,7 @@ export const Sidebar: React.FC = () => {
       title: 'Results & Marks',
       href: '/results',
       icon: Award,
-      roles: ['admin', 'teacher', 'student'],
+      roles: ['admin', 'student'],
     },
     {
       title: 'Assignments',
@@ -96,6 +97,12 @@ export const Sidebar: React.FC = () => {
       title: 'Reports',
       href: '/reports',
       icon: FileBarChart,
+      roles: ['admin', 'teacher', 'student'],
+    },
+    {
+      title: 'Settings',
+      href: '/settings',
+      icon: Settings2,
       roles: ['admin', 'teacher', 'student'],
     },
   ]

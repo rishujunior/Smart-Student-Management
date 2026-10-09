@@ -26,17 +26,24 @@ class CourseCreate(BaseModel):
     name: str = Field(min_length=2, max_length=150)
     code: str = Field(min_length=2, max_length=15)
     department_id: str
-    credits: int = Field(ge=1, le=10)
+    branch: Optional[str] = None
+    credits: Optional[int] = Field(None, ge=1, le=10)
     semester: int = Field(ge=1, le=10)
     description: Optional[str] = None
     teacher_id: Optional[str] = None
+    subject_type: Optional[str] = None
+    faculty_name: Optional[str] = None
 
 
 class CourseUpdate(BaseModel):
     name: Optional[str] = None
+    code: Optional[str] = None
+    branch: Optional[str] = None
     credits: Optional[int] = Field(None, ge=1, le=10)
     description: Optional[str] = None
     teacher_id: Optional[str] = None
+    subject_type: Optional[str] = None
+    faculty_name: Optional[str] = None
     is_active: Optional[bool] = None
 
 
@@ -46,11 +53,14 @@ class CourseResponse(BaseModel):
     code: str
     department_id: str
     department_name: Optional[str] = None
-    credits: int
+    branch: Optional[str] = None
+    credits: Optional[int] = None
     semester: int
     description: Optional[str] = None
     teacher_id: Optional[str] = None
     teacher_name: Optional[str] = None
+    subject_type: Optional[str] = None
+    faculty_name: Optional[str] = None
     is_active: bool = True
     created_at: datetime
 

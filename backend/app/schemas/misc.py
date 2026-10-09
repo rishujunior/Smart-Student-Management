@@ -68,7 +68,7 @@ class FeeResponse(BaseModel):
 
 # AI Features
 class AIQueryRequest(BaseModel):
-    query: str = Field(min_length=5)
+    query: str = Field(min_length=1)
     context: Optional[str] = None
 
 
@@ -98,3 +98,9 @@ class StudyPlanRequest(BaseModel):
 class SummarizeRequest(BaseModel):
     content: str = Field(min_length=50)
     max_length: Optional[int] = 500
+
+
+class LearningRoadmapRequest(BaseModel):
+    subject: str = Field(min_length=1)
+    current_level: str = "beginner"
+    goal: str = "job-ready"

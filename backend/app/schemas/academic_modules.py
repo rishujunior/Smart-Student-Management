@@ -19,7 +19,7 @@ class AttendanceRecord(BaseModel):
 class TakeAttendanceRequest(BaseModel):
     course_id: str
     date: datetime
-    records: List[AttendanceRecord]
+    records: List[AttendanceRecord] = Field(min_length=1)
 
 
 class AttendanceResponse(BaseModel):
@@ -44,6 +44,13 @@ class AttendanceSummary(BaseModel):
     absent: int
     late: int
     percentage: float
+
+
+class AttendanceCourseRoster(BaseModel):
+    course_id: str
+    date: datetime
+    students: List[dict]
+    summary: Dict
 
 
 # Results

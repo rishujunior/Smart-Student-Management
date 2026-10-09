@@ -20,18 +20,21 @@ export const Modal: React.FC<ModalProps> = ({
   if (!isOpen) return null
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-fade-in">
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/65 p-4 backdrop-blur-sm">
+      <div className="absolute inset-0" onClick={onClose} aria-hidden="true" />
       <div
         className={cn(
-          'relative w-full max-w-lg rounded-2xl border border-border bg-card p-6 shadow-2xl animate-scale-in',
+          'relative z-10 w-full max-w-xl rounded-2xl border border-border bg-card p-6 shadow-[0_30px_60px_-20px_rgba(15,23,42,0.8)] animate-[scaleIn_0.18s_ease-out]',
           className
         )}
       >
-        <div className="flex items-center justify-between border-b border-border pb-4 mb-4">
-          <h3 className="text-lg font-bold text-foreground">{title}</h3>
+        <div className="mb-5 flex items-center justify-between gap-4 border-b border-border pb-4">
+          <h3 className="text-lg font-semibold text-foreground">{title}</h3>
           <button
+            type="button"
             onClick={onClose}
-            className="rounded-lg p-1.5 text-muted-foreground hover:bg-accent hover:text-foreground transition-colors"
+            className="rounded-xl p-2 text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
+            aria-label="Close modal"
           >
             <X className="h-4 w-4" />
           </button>

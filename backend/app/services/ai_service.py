@@ -1,86 +1,184 @@
-import google.generativeai as genai
-from app.core.config import settings
-from loguru import logger
+import asyncio
 from typing import Optional, List
 
-# Preference order for auto-detection: fastest/cheapest current models first,
-# with older names kept as fallbacks in case a newer one isn't available on a
-# given API key yet. Google periodically retires model names (this is what
-# broke the previously hardcoded "gemini-1.5-flash"), so the actual model is
-# resolved dynamically against the account's live model list instead.
+from google import genai
+from google.genai import errors as genai_errors
+from fastapi import HTTPException, status
+from loguru import logger
+
+from app.core.config import settings
+
+# Prefer current fast/low-cost models while retaining live account discovery.
 _MODEL_CANDIDATES = [
-    "gemini-2.5-flash",
-    "gemini-2.0-flash",
+"gemini-3.7-flash",
+    "gemini-3.6-flash",
+    "gemini-3.5-flash",
     "gemini-flash-latest",
-    "gemini-1.5-flash",
-    "gemini-1.5-pro",
 ]
 
 
 class AIService:
     def __init__(self):
-        self._configured = False
-        self._model = None
+        self._client = None
         self._model_name: Optional[str] = None
 
     @property
     def model_name(self) -> str:
-        return self._model_name or "not-configured"
+        return self._model_name or settings.GEMINI_MODEL or "auto-detect"
 
-    def _resolve_model_name(self) -> str:
-        if settings.GEMINI_MODEL:
-            return settings.GEMINI_MODEL
+    @staticmethod
+    def _has_api_key() -> bool:
+        key = settings.GEMINI_API_KEY.strip()
+        return bool(key) and not any(
+            marker in key.lower()
+            for marker in ("your-", "placeholder", "replace-me", "changeme")
+        )
+
+    def _get_client(self):
+        if not self._has_api_key():
+            raise HTTPException(
+                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                detail="Gemini AI is not configured",
+            )
+        if self._client is None:
+            self._client = genai.Client(api_key=settings.GEMINI_API_KEY.strip())
+        return self._client
+
+    @staticmethod
+    def _provider_error(error: Exception) -> HTTPException:
+        code = getattr(error, "code", None)
+        message = str(getattr(error, "message", "") or "").lower()
+
+        if code == 429 or "quota" in message or "rate limit" in message:
+            detail = "Gemini quota or rate limit reached. Please try again later."
+            http_status = status.HTTP_429_TOO_MANY_REQUESTS
+        elif (
+            code in (400, 401, 403)
+            and ("api key" in message or "api_key" in message or code in (401, 403))
+        ) or "api_key_invalid" in message:
+            detail = "Gemini API key is invalid. Check GEMINI_API_KEY in backend/.env."
+            http_status = status.HTTP_503_SERVICE_UNAVAILABLE
+        elif code in (500, 502, 503, 504):
+            detail = "Gemini is temporarily unavailable. Please try again later."
+            http_status = status.HTTP_503_SERVICE_UNAVAILABLE
+        else:
+            detail = "Gemini request failed. Please try again later."
+            http_status = status.HTTP_502_BAD_GATEWAY
+
+        logger.warning("Gemini provider request failed (status={})", code or "network")
+        return HTTPException(status_code=http_status, detail=detail)
+
+    def _resolve_model_name(self, client) -> str:
+        if settings.GEMINI_MODEL.strip():
+            return settings.GEMINI_MODEL.strip()
 
         try:
-            available = {
-                m.name.split("/")[-1]
-                for m in genai.list_models()
-                if "generateContent" in m.supported_generation_methods
-            }
-        except Exception as e:
-            logger.warning(f"Could not list Gemini models, falling back to default: {e}")
+            models = client.models.list()
+            available = set()
+            for model in models:
+                actions = getattr(model, "supported_actions", None)
+                if actions is None:
+                    actions = getattr(model, "supported_generation_methods", None)
+                if not actions or any("generatecontent" in str(action).lower() for action in actions):
+                    available.add(str(model.name).split("/")[-1])
+        except genai_errors.APIError as error:
+            raise self._provider_error(error) from None
+        except Exception:
+            logger.warning("Gemini model discovery failed; using the current default candidate")
             return _MODEL_CANDIDATES[0]
 
         for candidate in _MODEL_CANDIDATES:
             if candidate in available:
                 return candidate
-
-        # None of our preferred names matched — use whatever flash model is
-        # available, or any available model, before giving up.
-        flash_models = sorted(m for m in available if "flash" in m)
+        flash_models = sorted(model for model in available if "flash" in model.lower())
         if flash_models:
             return flash_models[0]
         if available:
-            return next(iter(available))
-
+            return sorted(available)[0]
         return _MODEL_CANDIDATES[0]
 
-    def _configure(self):
-        if self._configured or not settings.GEMINI_API_KEY:
-            return
-        genai.configure(api_key=settings.GEMINI_API_KEY)
-        self._model_name = self._resolve_model_name()
-        self._model = genai.GenerativeModel(self._model_name)
-        self._configured = True
-
     async def _generate(self, prompt: str) -> str:
-        self._configure()
-        if not self._model:
-            return "AI service is not configured. Please provide a valid GEMINI_API_KEY."
-        try:
-            response = self._model.generate_content(prompt)
-            return response.text
-        except Exception as e:
-            logger.error(f"Gemini AI error ({self._model_name}): {e}")
-            # The resolved model name may itself have just been retired —
-            # drop cached config so the next call re-resolves from scratch.
-            self._configured = False
-            self._model = None
-            return f"AI service temporarily unavailable. Error: {str(e)}"
+        client = self._get_client()
+
+        if self._model_name is None:
+            self._model_name = await asyncio.to_thread(
+                self._resolve_model_name, client
+            )
+
+        models_to_try = [
+            self._model_name,
+            "gemini-3.7-flash",
+            "gemini-3.6-flash",
+            "gemini-3.5-flash",
+            "gemini-flash-latest",
+        ]
+
+        models_to_try = list(dict.fromkeys(models_to_try))
+        last_error = None
+
+        for model_name in models_to_try:
+            for attempt in range(3):
+                try:
+                    response = await asyncio.to_thread(
+                        client.models.generate_content,
+                        model=model_name,
+                        contents=prompt,
+                    )
+
+                    try:
+                        text = getattr(response, "text", None)
+                    except Exception:
+                        text = None
+
+                    if isinstance(text, str) and text.strip():
+                        self._model_name = model_name
+                        return text.strip()
+
+                    last_error = "Gemini returned an empty response."
+
+                except genai_errors.APIError as error:
+                    last_error = error
+
+                    if error.code in (500, 502, 503, 504):
+                        logger.warning(
+                            "Gemini model {} unavailable (status={}), attempt {}/3",
+                            model_name,
+                            error.code,
+                            attempt + 1,
+                        )
+                        if attempt < 2:
+                            await asyncio.sleep(1.5 * (attempt + 1))
+                            continue
+                        break
+
+                    if error.code in (400, 401, 403):
+                        raise self._provider_error(error) from None
+
+                    raise self._provider_error(error) from None
+
+                except Exception as error:
+                    logger.warning(
+                        "Gemini request failed for %s (%s)",
+                        model_name,
+                        type(error).__name__,
+                    )
+                    last_error = error
+                    if attempt < 2:
+                        await asyncio.sleep(1.5 * (attempt + 1))
+                        continue
+                    break
+
+        if isinstance(last_error, genai_errors.APIError):
+            raise self._provider_error(last_error) from None
+
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Gemini is temporarily unavailable. Please try again later.",
+        )
 
     async def answer_question(self, query: str, context: Optional[str] = None) -> str:
         prompt = f"""You are an expert academic assistant for a student management system.
-        
+
 Context: {context or 'General academic query'}
 
 Student Question: {query}
@@ -95,7 +193,6 @@ Provide a clear, concise, and helpful academic response. Be encouraging and supp
             "long": "Generate long-answer/essay questions.",
             "mixed": "Generate a mix of MCQ, short-answer, and long-answer questions.",
         }
-
         prompt = f"""You are an expert educator. Generate {count} {difficulty}-level {subject} questions about "{topic}".
 
 Question Type: {type_instructions.get(question_type, type_instructions['mixed'])}
@@ -174,10 +271,9 @@ Make it actionable and specific for an engineering student."""
 
     async def recommend_weak_subjects(self, results_data: List[dict]) -> str:
         formatted = "\n".join([
-            f"- {r.get('course_name', 'Subject')}: {r.get('percentage', 0):.1f}% (Grade: {r.get('grade', 'N/A')})"
-            for r in results_data
+            f"- {result.get('course_name', 'Subject')}: {result.get('percentage', 0):.1f}% (Grade: {result.get('grade', 'N/A')})"
+            for result in results_data
         ])
-
         prompt = f"""Based on this student's performance data, recommend improvement strategies:
 
 {formatted}

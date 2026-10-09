@@ -47,7 +47,7 @@ export const Login: React.FC = () => {
       if (user.role === 'admin') navigate('/admin/dashboard')
       else if (user.role === 'teacher') navigate('/teacher/dashboard')
       else navigate('/student/dashboard')
-    } catch (err: any) {
+    } catch {
       setError('Demo login failed. Make sure MongoDB is running and seeded.')
     } finally {
       setIsLoading(false)

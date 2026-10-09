@@ -62,6 +62,7 @@ class StudentService:
         result["email"] = user["email"] if user else ""
         result["avatar"] = user.get("avatar") if user else None
         result["department_name"] = dept["name"] if dept else None
+        result["branch"] = student.get("branch") or (dept.get("code") if dept else None)
         return result
 
     async def get_student_by_user_id(self, user_id: str) -> Optional[dict]:
@@ -101,8 +102,8 @@ class StudentService:
 
         # Attendance stats
         total_attendance = await attendance_col.count_documents({"student_id": student_id})
-        present_count = await attendance_col.count_documents({"student_id": student_id, "status": "present"})
-        attendance_pct = (present_count / total_attendance * 100) if total_attendance > 0 else 0
+        attended_count = await attendance_col.count_documents({"student_id": student_id, "status": {"$in": ["present", "late"]}})
+        attendance_pct = (attended_count / total_attendance * 100) if total_attendance > 0 else 0
 
         # Results stats
         results = []

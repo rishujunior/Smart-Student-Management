@@ -17,18 +17,18 @@ export const Button: React.FC<ButtonProps> = ({
   ...props
 }) => {
   const baseStyles =
-    'inline-flex items-center justify-center font-medium transition-all duration-200 focus:outline-none focus:ring-2 focus:ring-primary/50 disabled:opacity-50 disabled:cursor-not-allowed rounded-xl active:scale-[0.98]'
+    'inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-xl font-medium transition-all duration-200 focus:outline-none focus-visible:ring-2 focus-visible:ring-primary/60 focus-visible:ring-offset-2 focus-visible:ring-offset-background disabled:pointer-events-none disabled:opacity-50 active:scale-[0.98]'
 
   const variants = {
     primary:
-      'bg-primary text-primary-foreground hover:bg-primary/90 shadow-md shadow-primary/20',
+      'bg-primary text-primary-foreground shadow-[0_10px_20px_-12px_rgba(79,70,229,0.9)] hover:bg-primary/90',
     secondary: 'bg-secondary text-secondary-foreground hover:bg-secondary/80',
     outline:
-      'border border-border bg-transparent hover:bg-accent text-foreground',
-    ghost: 'hover:bg-accent text-foreground',
+      'border border-border bg-transparent text-foreground hover:bg-accent hover:border-border/70',
+    ghost: 'text-foreground hover:bg-accent',
     destructive:
       'bg-destructive text-destructive-foreground hover:bg-destructive/90',
-    ai: 'bg-gradient-to-r from-indigo-500 via-purple-500 to-pink-500 text-white hover:opacity-90 shadow-md shadow-purple-500/25',
+    ai: 'bg-gradient-to-r from-indigo-500 via-violet-500 to-fuchsia-500 text-white shadow-[0_14px_26px_-12px_rgba(168,85,247,0.8)] hover:brightness-110',
   }
 
   const sizes = {
@@ -46,7 +46,7 @@ export const Button: React.FC<ButtonProps> = ({
       {isLoading ? (
         <span className="flex items-center gap-2">
           <svg
-            className="animate-spin h-4 w-4 text-current"
+            className="h-4 w-4 animate-spin text-current"
             xmlns="http://www.w3.org/2000/svg"
             fill="none"
             viewBox="0 0 24 24"

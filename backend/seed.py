@@ -1,12 +1,20 @@
 """
-Database seeding script - creates initial admin user and sample data.
+Database seeding script for the Smart Student Management System.
+
+This script is safe to run repeatedly. It uses upsert-style logic to avoid
+creating duplicate records and is designed to seed the AKTU B.Tech CSE Semester III
+curriculum without inventing fake student identities.
+
 Run: python seed.py
 """
 import asyncio
+import os
 import sys
+from datetime import datetime, timezone
+from typing import Any, Dict, List
+
 from motor.motor_asyncio import AsyncIOMotorClient
 from passlib.context import CryptContext
-from datetime import datetime, timezone
 
 # Windows consoles default to a legacy codepage (cp1252) that can't encode the
 # emoji used in this script's log output; force UTF-8 so `python seed.py` works
@@ -14,213 +22,292 @@ from datetime import datetime, timezone
 if sys.platform == "win32":
     sys.stdout.reconfigure(encoding="utf-8")
 
-MONGODB_URL = "mongodb://localhost:27017"
-DATABASE_NAME = "student_management_db"
+MONGODB_URL = os.getenv("MONGODB_URL", "mongodb://localhost:27017")
+DATABASE_NAME = os.getenv("DATABASE_NAME", "student_management_db")
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 
+AKTU_CSE_SEMESTER_3_SUBJECTS: List[Dict[str, Any]] = [
+    {"code": "BAS303", "name": "Mathematics-IV", "subject_type": "theory", "faculty_name": "Dr. Nayan Goel Modi"},
+    {"code": "BCS301", "name": "Data Structure", "subject_type": "theory", "faculty_name": "Alok Kumar Srivastav"},
+    {"code": "BCS302", "name": "Computer Organization & Architecture", "subject_type": "theory", "faculty_name": "Sanjay Gupta"},
+    {"code": "BCS303", "name": "Discrete Structures & Theory of Logic", "subject_type": "theory", "faculty_name": "Amit Dubey"},
+    {"code": "BCC302", "name": "Python Programming", "subject_type": "theory", "faculty_name": "Jyoti Pandey"},
+    {"code": "BVE301", "name": "Universal Human Values & Professional Ethics", "subject_type": "theory", "faculty_name": "SK Madhesiya"},
+    {"code": "BCS351", "name": "Data Structure Lab", "subject_type": "lab", "faculty_name": None},
+    {"code": "BCS352", "name": "Computer Organization & Architecture Lab", "subject_type": "lab", "faculty_name": None},
+    {"code": "BCS353", "name": "Web Designing Workshop", "subject_type": "workshop", "faculty_name": None},
+    {"code": "BCC351", "name": "Internship Assessment / Mini Project", "subject_type": "project", "faculty_name": None},
+]
 
-async def seed():
+
+def utc_now() -> datetime:
+    return datetime.now(timezone.utc)
+
+
+async def ensure_department(db, name: str, code: str, description: str | None = None) -> str:
+    department = await db.departments.find_one({"code": code.upper()})
+    if department:
+        return str(department["_id"])
+
+    result = await db.departments.insert_one({
+        "name": name,
+        "code": code.upper(),
+        "description": description,
+        "created_at": utc_now(),
+        "updated_at": utc_now(),
+    })
+    return str(result.inserted_id)
+
+
+async def ensure_user(db, email: str, password: str, full_name: str, role: str, *, phone: str | None = None) -> str:
+    existing = await db.users.find_one({"email": email})
+    if existing:
+        return str(existing["_id"])
+
+    user = {
+        "email": email,
+        "password_hash": pwd_context.hash(password),
+        "full_name": full_name,
+        "role": role,
+        "is_active": True,
+        "is_verified": True,
+        "phone": phone,
+        "avatar": None,
+        "created_at": utc_now(),
+        "updated_at": utc_now(),
+    }
+    result = await db.users.insert_one(user)
+    return str(result.inserted_id)
+
+
+async def ensure_current_semester(db, name: str = "Semester III - AKTU B.Tech CSE") -> str:
+    existing = await db.semesters.find_one({"is_current": True})
+    if existing:
+        return str(existing["_id"])
+
+    result = await db.semesters.insert_one({
+        "name": name,
+        "start_date": datetime(2024, 7, 1, tzinfo=timezone.utc),
+        "end_date": datetime(2024, 12, 31, tzinfo=timezone.utc),
+        "is_current": True,
+        "created_at": utc_now(),
+    })
+    return str(result.inserted_id)
+
+
+async def ensure_rishu_cse_semester_three_profile(db, department_id: str) -> None:
+    user = await db.users.find_one({"full_name": "rishu_kumar", "role": "student"})
+    if not user:
+        return
+
+    user_id = str(user["_id"])
+    existing = await db.students.find_one({"user_id": user_id})
+    now = utc_now()
+    academic_fields = {
+        "department_id": department_id,
+        "branch": "CSE",
+        "semester": 3,
+        "updated_at": now,
+    }
+    if existing:
+        await db.students.update_one({"_id": existing["_id"]}, {"$set": academic_fields})
+        return
+
+    enrollment_number = f"CSE3-{user_id[-8:].upper()}"
+    await db.students.insert_one({
+        **academic_fields,
+        "user_id": user_id,
+        "enrollment_number": enrollment_number,
+        "batch_year": max(now.year - 1, 2000),
+        "is_active": True,
+        "created_at": now,
+    })
+
+
+async def find_teacher_id(db, faculty_name: str | None) -> str | None:
+    if not faculty_name:
+        return None
+    user = await db.users.find_one({"full_name": faculty_name, "role": "teacher"})
+    if not user:
+        return None
+    teacher = await db.teachers.find_one({"user_id": str(user["_id"])})
+    return str(teacher["_id"]) if teacher else None
+
+
+async def ensure_teacher_profile(db, user_id: str, department_id: str) -> str:
+    existing = await db.teachers.find_one({"user_id": user_id})
+    if existing:
+        return str(existing["_id"])
+
+    result = await db.teachers.insert_one({
+        "user_id": user_id,
+        "employee_id": "TCH001",
+        "department_id": department_id,
+        "designation": "Professor",
+        "qualification": "Ph.D",
+        "experience_years": 8,
+        "specialization": "Mathematics",
+        "is_active": True,
+        "created_at": utc_now(),
+        "updated_at": utc_now(),
+    })
+    return str(result.inserted_id)
+
+
+async def ensure_course(
+    db,
+    subject: Dict[str, Any],
+    department_id: str,
+    semester: int = 3,
+) -> None:
+    teacher_id = await find_teacher_id(db, subject.get("faculty_name"))
+    payload = {
+        "name": subject["name"],
+        "code": subject["code"].upper(),
+        "department_id": department_id,
+        "branch": subject.get("branch", "CSE"),
+        "credits": subject.get("credits"),
+        "semester": semester,
+        "subject_type": subject["subject_type"],
+        "description": subject.get("description"),
+        "teacher_id": teacher_id,
+        "faculty_name": subject.get("faculty_name"),
+        "is_active": True,
+        "updated_at": utc_now(),
+    }
+    query = {"code": payload["code"], "department_id": department_id}
+    matches = await db.courses.find(query).sort("created_at", 1).to_list(length=100)
+    if matches:
+        existing = matches[0]
+        await db.courses.update_one({"_id": existing["_id"]}, {"$set": payload})
+        for duplicate in matches[1:]:
+            await db.courses.update_one(
+                {"_id": duplicate["_id"]},
+                {"$set": {"is_active": False, "updated_at": utc_now()}},
+            )
+    else:
+        payload["created_at"] = utc_now()
+        await db.courses.insert_one(payload)
+
+
+async def seed_demo_data(db, admin_id: str):
+    demo_notifications = [
+        {
+            "title": "Welcome to Smart SMS",
+            "message": "The demo dashboard is ready. Replace demo content with live academic data when the real dataset is imported.",
+            "type": "announcement",
+            "target_role": "all",
+            "created_by": admin_id,
+            "is_read": False,
+            "created_at": utc_now(),
+        }
+    ]
+
+    for notification in demo_notifications:
+        await db.notifications.update_one(
+            {"title": notification["title"]},
+            {"$setOnInsert": notification},
+            upsert=True,
+        )
+
+
+async def seed_database(demo_data: bool = False) -> Dict[str, Any]:
     client = AsyncIOMotorClient(MONGODB_URL)
     db = client[DATABASE_NAME]
 
     print("🌱 Starting database seeding...")
 
-    # ─── Admin User ───
-    existing_admin = await db.users.find_one({"email": "admin@sms.edu"})
-    if not existing_admin:
-        admin_result = await db.users.insert_one({
-            "email": "admin@sms.edu",
-            "password_hash": pwd_context.hash("Admin@123"),
-            "full_name": "System Administrator",
-            "role": "admin",
-            "is_active": True,
-            "is_verified": True,
-            "phone": "+91-9876543210",
-            "avatar": None,
-            "created_at": datetime.now(timezone.utc),
-            "updated_at": datetime.now(timezone.utc),
-        })
-        admin_id = str(admin_result.inserted_id)
-        print(f"✅ Admin created: admin@sms.edu / Admin@123")
-    else:
-        admin_id = str(existing_admin["_id"])
-        print("ℹ️  Admin already exists")
+    admin_id = await ensure_user(
+        db,
+        "admin@sms.edu",
+        "Admin@123",
+        "System Administrator",
+        "admin",
+        phone="+91-9876543210",
+    )
+    print(f"✅ Admin ready: admin@sms.edu / Admin@123")
 
-    # ─── Departments ───
-    departments = [
-        {"name": "Computer Science Engineering", "code": "CSE", "description": "Department of Computer Science and Engineering"},
-        {"name": "Electronics Engineering", "code": "ECE", "description": "Department of Electronics and Communication"},
-        {"name": "Mechanical Engineering", "code": "ME", "description": "Department of Mechanical Engineering"},
-        {"name": "Civil Engineering", "code": "CE", "description": "Department of Civil Engineering"},
-        {"name": "Information Technology", "code": "IT", "description": "Department of Information Technology"},
-    ]
-    dept_ids = {}
-    for dept in departments:
-        existing = await db.departments.find_one({"code": dept["code"]})
-        if not existing:
-            result = await db.departments.insert_one({
-                **dept, "created_at": datetime.now(timezone.utc), "updated_at": datetime.now(timezone.utc)
-            })
-            dept_ids[dept["code"]] = str(result.inserted_id)
-        else:
-            dept_ids[dept["code"]] = str(existing["_id"])
-    print(f"✅ {len(departments)} departments seeded")
+    department_id = await ensure_department(
+        db,
+        "Computer Science & Engineering",
+        "CSE",
+        "AKTU B.Tech Computer Science and Engineering department",
+    )
+    print("✅ Department ensured: CSE")
+    await ensure_rishu_cse_semester_three_profile(db, department_id)
 
-    # ─── Teacher Users ───
-    teachers_data = [
-        {"email": "prof.sharma@sms.edu", "full_name": "Prof. Rajesh Sharma", "employee_id": "TCH001", "dept": "CSE", "designation": "Professor"},
-        {"email": "dr.patel@sms.edu", "full_name": "Dr. Priya Patel", "employee_id": "TCH002", "dept": "ECE", "designation": "Associate Professor"},
-        {"email": "mr.kumar@sms.edu", "full_name": "Mr. Amit Kumar", "employee_id": "TCH003", "dept": "IT", "designation": "Assistant Professor"},
-    ]
-    teacher_ids = {}
-    for t in teachers_data:
-        existing = await db.users.find_one({"email": t["email"]})
-        if not existing:
-            user_result = await db.users.insert_one({
-                "email": t["email"],
-                "password_hash": pwd_context.hash("Teacher@123"),
-                "full_name": t["full_name"],
-                "role": "teacher",
-                "is_active": True,
-                "is_verified": True,
-                "phone": None,
-                "avatar": None,
-                "created_at": datetime.now(timezone.utc),
-                "updated_at": datetime.now(timezone.utc),
-            })
-            user_id = str(user_result.inserted_id)
-        else:
-            user_id = str(existing["_id"])
+    teacher_user_id = await ensure_user(
+        db,
+        "prof.sharma@sms.edu",
+        "Teacher@123",
+        "Prof. Rajesh Sharma",
+        "teacher",
+        phone="+91-9876543211",
+    )
+    teacher_id = await ensure_teacher_profile(db, teacher_user_id, department_id)
+    print("✅ Teacher profile ensured: Prof. Rajesh Sharma")
 
-        existing_teacher = await db.teachers.find_one({"user_id": user_id})
-        if not existing_teacher:
-            teacher_result = await db.teachers.insert_one({
-                "user_id": user_id,
-                "employee_id": t["employee_id"],
-                "department_id": dept_ids[t["dept"]],
-                "designation": t["designation"],
-                "qualification": "Ph.D" if t["designation"] == "Professor" else "M.Tech",
-                "experience_years": 10,
-                "specialization": "Computer Science",
-                "is_active": True,
-                "created_at": datetime.now(timezone.utc),
-                "updated_at": datetime.now(timezone.utc),
-            })
-            teacher_ids[t["employee_id"]] = str(teacher_result.inserted_id)
-        else:
-            teacher_ids[t["employee_id"]] = str(existing_teacher["_id"])
+    for subject in AKTU_CSE_SEMESTER_3_SUBJECTS:
+        await ensure_course(db, subject, department_id)
 
-    print(f"✅ {len(teachers_data)} teachers seeded (Password: Teacher@123)")
+    await ensure_course(
+        db,
+        {
+            "code": "BAS101",
+            "name": "Engineering Mathematics-I",
+            "subject_type": "theory",
+            "faculty_name": None,
+        },
+        department_id,
+        semester=1,
+    )
 
-    # ─── Student Users ───
-    students_data = [
-        {"email": "alice@student.sms.edu", "full_name": "Alice Johnson", "enrollment": "CS2024001", "dept": "CSE", "sem": 3, "batch": 2024},
-        {"email": "bob@student.sms.edu", "full_name": "Bob Smith", "enrollment": "CS2024002", "dept": "CSE", "sem": 3, "batch": 2024},
-        {"email": "carol@student.sms.edu", "full_name": "Carol Williams", "enrollment": "IT2024001", "dept": "IT", "sem": 3, "batch": 2024},
-        {"email": "david@student.sms.edu", "full_name": "David Brown", "enrollment": "EC2024001", "dept": "ECE", "sem": 3, "batch": 2024},
-        {"email": "eve@student.sms.edu", "full_name": "Eve Davis", "enrollment": "CS2023001", "dept": "CSE", "sem": 5, "batch": 2023},
-    ]
-    for s in students_data:
-        existing = await db.users.find_one({"email": s["email"]})
-        if not existing:
-            user_result = await db.users.insert_one({
-                "email": s["email"],
-                "password_hash": pwd_context.hash("Student@123"),
-                "full_name": s["full_name"],
-                "role": "student",
-                "is_active": True,
-                "is_verified": True,
-                "phone": None,
-                "avatar": None,
-                "created_at": datetime.now(timezone.utc),
-                "updated_at": datetime.now(timezone.utc),
-            })
-            user_id = str(user_result.inserted_id)
-        else:
-            user_id = str(existing["_id"])
+    assigned_codes = ["BAS101", "BAS303"]
+    for code in assigned_codes:
+        await db.courses.update_one(
+            {"code": code, "department_id": department_id},
+            {"$set": {"teacher_id": teacher_id, "updated_at": utc_now()}},
+        )
+    await db.courses.update_many(
+        {"teacher_id": teacher_id, "code": {"$nin": assigned_codes}},
+        {"$set": {"teacher_id": None, "updated_at": utc_now()}},
+    )
 
-        existing_student = await db.students.find_one({"user_id": user_id})
-        if not existing_student:
-            await db.students.insert_one({
-                "user_id": user_id,
-                "enrollment_number": s["enrollment"],
-                "department_id": dept_ids[s["dept"]],
-                "semester": s["sem"],
-                "batch_year": s["batch"],
-                "guardian_name": "Guardian Name",
-                "guardian_phone": "+91-9000000000",
-                "address": "123 College Road, City - 400001",
-                "gender": "F" if s["full_name"].split()[0] in ["Alice", "Carol", "Eve"] else "M",
-                "blood_group": "O+",
-                "is_active": True,
-                "created_at": datetime.now(timezone.utc),
-                "updated_at": datetime.now(timezone.utc),
-            })
+    curriculum_codes = [subject["code"].upper() for subject in AKTU_CSE_SEMESTER_3_SUBJECTS]
+    curriculum_codes.append("BAS101")
+    await db.courses.update_many(
+        {"department_id": department_id, "code": {"$nin": curriculum_codes}},
+        {"$set": {
+            "is_active": False,
+            "archive_reason": "Not in the configured AKTU CSE Semester III curriculum",
+            "updated_at": utc_now(),
+        }},
+    )
+    print(f"✅ {len(AKTU_CSE_SEMESTER_3_SUBJECTS)} AKTU CSE Semester III subjects ensured")
 
-    print(f"✅ {len(students_data)} students seeded (Password: Student@123)")
+    await ensure_current_semester(db, "Semester III - AKTU B.Tech CSE")
+    print("✅ Active semester ensured")
 
-    # ─── Courses ───
-    courses_data = [
-        {"name": "Data Structures & Algorithms", "code": "CS301", "dept": "CSE", "credits": 4, "sem": 3, "teacher": "TCH001"},
-        {"name": "Database Management Systems", "code": "CS302", "dept": "CSE", "credits": 3, "sem": 3, "teacher": "TCH001"},
-        {"name": "Operating Systems", "code": "CS303", "dept": "CSE", "credits": 3, "sem": 3, "teacher": "TCH003"},
-        {"name": "Computer Networks", "code": "CS401", "dept": "CSE", "credits": 3, "sem": 5, "teacher": "TCH001"},
-        {"name": "Machine Learning", "code": "CS501", "dept": "CSE", "credits": 4, "sem": 5, "teacher": "TCH003"},
-        {"name": "Digital Electronics", "code": "EC301", "dept": "ECE", "credits": 3, "sem": 3, "teacher": "TCH002"},
-        {"name": "Web Development", "code": "IT301", "dept": "IT", "credits": 3, "sem": 3, "teacher": "TCH003"},
-    ]
-    for c in courses_data:
-        existing = await db.courses.find_one({"code": c["code"]})
-        if not existing:
-            await db.courses.insert_one({
-                "name": c["name"],
-                "code": c["code"],
-                "department_id": dept_ids[c["dept"]],
-                "credits": c["credits"],
-                "semester": c["sem"],
-                "teacher_id": teacher_ids.get(c["teacher"]),
-                "is_active": True,
-                "created_at": datetime.now(timezone.utc),
-                "updated_at": datetime.now(timezone.utc),
-            })
-    print(f"✅ {len(courses_data)} courses seeded")
-
-    # ─── Current Semester ───
-    existing_sem = await db.semesters.find_one({"is_current": True})
-    if not existing_sem:
-        await db.semesters.insert_one({
-            "name": "Semester 5 - 2024-25",
-            "start_date": datetime(2024, 8, 1, tzinfo=timezone.utc),
-            "end_date": datetime(2024, 12, 31, tzinfo=timezone.utc),
-            "is_current": True,
-            "created_at": datetime.now(timezone.utc),
-        })
-        print("✅ Current semester seeded")
-
-    # ─── Sample Notifications ───
-    await db.notifications.delete_many({})
-    notifications = [
-        {"title": "Welcome to Smart SMS", "message": "Welcome to the Smart Student Management System. This platform helps you manage all academic activities efficiently.", "type": "announcement", "target_role": "all"},
-        {"title": "Exam Schedule Released", "message": "The mid-semester examination schedule has been released. Please check the timetable section.", "type": "exam", "target_role": "student"},
-        {"title": "Assignment Submission Reminder", "message": "Please ensure all pending assignments are submitted before the deadline.", "type": "assignment", "target_role": "student"},
-        {"title": "Faculty Meeting", "message": "All faculty members are requested to attend the department meeting on Friday at 2 PM.", "type": "general", "target_role": "teacher"},
-    ]
-    for n in notifications:
-        await db.notifications.insert_one({
-            **n, "created_by": admin_id, "is_read": False, "created_at": datetime.now(timezone.utc)
-        })
-    print(f"✅ {len(notifications)} notifications seeded")
-
-    print("\n" + "="*50)
-    print("✨ Database seeding complete!")
-    print("="*50)
-    print("\n📋 Login Credentials:")
-    print("  Admin:   admin@sms.edu          / Admin@123")
-    print("  Teacher: prof.sharma@sms.edu    / Teacher@123")
-    print("  Student: alice@student.sms.edu  / Student@123")
-    print("\n🌐 API Docs: http://localhost:8000/api/docs")
+    if demo_data:
+        await seed_demo_data(db, admin_id)
+        print("✅ Demo data seeded")
 
     client.close()
+    return {
+        "admin_email": "admin@sms.edu",
+        "semester": "Semester III - AKTU B.Tech CSE",
+        "subjects_seeded": len(AKTU_CSE_SEMESTER_3_SUBJECTS),
+    }
+
+
+async def seed():
+    print("\n" + "=" * 60)
+    print("AKTU CSE Semester III seed")
+    print("=" * 60)
+    await seed_database(demo_data=False)
+    print("\n📋 Admin login: admin@sms.edu / Admin@123")
+    print("\n💡 This seed is intentionally student-name-safe. Add real students later into the existing MongoDB collections.")
+    print("\n🌐 API Docs: http://localhost:8000/api/docs")
 
 
 if __name__ == "__main__":

@@ -8,6 +8,7 @@ class StudentCreate(BaseModel):
     user_id: str
     enrollment_number: str = Field(min_length=5)
     department_id: str
+    branch: Optional[str] = None
     semester: int = Field(ge=1, le=10)
     batch_year: int
     guardian_name: Optional[str] = None
@@ -20,6 +21,7 @@ class StudentCreate(BaseModel):
 
 class StudentUpdate(BaseModel):
     department_id: Optional[str] = None
+    branch: Optional[str] = None
     semester: Optional[int] = Field(None, ge=1, le=10)
     guardian_name: Optional[str] = None
     guardian_phone: Optional[str] = None
@@ -36,6 +38,7 @@ class StudentResponse(BaseModel):
     email: str
     department_id: str
     department_name: Optional[str] = None
+    branch: Optional[str] = None
     semester: int
     batch_year: int
     guardian_name: Optional[str] = None

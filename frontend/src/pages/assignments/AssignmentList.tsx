@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react'
+import React, { useCallback, useEffect, useState } from 'react'
 import { DashboardLayout } from '../../components/layout/DashboardLayout'
 import { Card } from '../../components/ui/Card'
 import { Button } from '../../components/ui/Button'
@@ -30,11 +30,7 @@ export const AssignmentList: React.FC = () => {
     total_marks: 20,
   })
 
-  useEffect(() => {
-    fetchData()
-  }, [])
-
-  const fetchData = async () => {
+  const fetchData = useCallback(async () => {
     try {
       const [aRes, cRes] = await Promise.all([
         api.get('/assignments'),
@@ -50,7 +46,11 @@ export const AssignmentList: React.FC = () => {
     } catch (err) {
       console.error(err)
     }
-  }
+  }, [user?.role])
+
+  useEffect(() => {
+    fetchData()
+  }, [fetchData])
 
   const handleCreate = async (e: React.FormEvent) => {
     e.preventDefault()

@@ -30,8 +30,8 @@ async def get_dashboard_stats(_=Depends(get_current_admin)):
     now = datetime.now(timezone.utc)
     month_start = now.replace(day=1, hour=0, minute=0, second=0)
     total_att = await attendance_col.count_documents({"date": {"$gte": month_start}})
-    present_att = await attendance_col.count_documents({"date": {"$gte": month_start}, "status": "present"})
-    attendance_rate = round((present_att / total_att * 100), 2) if total_att > 0 else 0
+    attended = await attendance_col.count_documents({"date": {"$gte": month_start}, "status": {"$in": ["present", "late"]}})
+    attendance_rate = round((attended / total_att * 100), 2) if total_att > 0 else 0
 
     # Fee stats
     pending_fees = await fees_col.count_documents({"payment_status": "pending"})
@@ -112,8 +112,8 @@ async def get_analytics(_=Depends(get_current_admin)):
         
         if dept_students:
             total = await attendance_col.count_documents({"student_id": {"$in": dept_students}})
-            present = await attendance_col.count_documents({"student_id": {"$in": dept_students}, "status": "present"})
-            pct = round((present / total * 100), 2) if total > 0 else 0
+            attended = await attendance_col.count_documents({"student_id": {"$in": dept_students}, "status": {"$in": ["present", "late"]}})
+            pct = round((attended / total * 100), 2) if total > 0 else 0
             dept_attendance.append({"department": dept["name"], "attendance_rate": pct})
 
     return {

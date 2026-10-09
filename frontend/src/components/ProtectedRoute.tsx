@@ -5,9 +5,10 @@ import type { UserRole } from '../types'
 
 interface ProtectedRouteProps {
   allowedRoles?: UserRole[]
+  children?: React.ReactNode
 }
 
-export const ProtectedRoute: React.FC<ProtectedRouteProps> = ({ allowedRoles }) => {
+export const ProtectedRoute: React.FC<ProtectedRouteProps> = ({ allowedRoles, children }) => {
   const { user, loading, isAuthenticated } = useAuth()
 
   if (loading) {
@@ -29,5 +30,5 @@ export const ProtectedRoute: React.FC<ProtectedRouteProps> = ({ allowedRoles }) 
     return <Navigate to="/unauthorized" replace />
   }
 
-  return <Outlet />
+  return children ?? <Outlet />
 }

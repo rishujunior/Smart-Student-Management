@@ -22,8 +22,10 @@ export const TeacherDashboard: React.FC = () => {
         const profRes = await api.get('/teachers/me')
         setProfile(profRes.data)
 
-        const courseRes = await api.get('/academic/courses')
-        setCourses(courseRes.data)
+        const courseRes = await api.get('/academic/courses', {
+          params: { teacher_id: profRes.data.id },
+        })
+        setCourses([...courseRes.data].sort((left, right) => left.semester - right.semester || left.code.localeCompare(right.code)))
 
         const assignRes = await api.get('/assignments')
         setAssignments(assignRes.data)
@@ -65,28 +67,28 @@ export const TeacherDashboard: React.FC = () => {
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
           <StatCard
             title="Assigned Courses"
-            value={courses.length || 3}
+            value={courses.length}
             description="Active Semester"
             icon={BookOpen}
             color="purple"
           />
           <StatCard
             title="Total Students"
-            value="120"
+            value="—"
             description="Across all classes"
             icon={Users}
             color="blue"
           />
           <StatCard
             title="Assignments Uploaded"
-            value={assignments.length || 4}
-            description="Pending Evaluation: 12"
+            value={assignments.length}
+            description="Live queue"
             icon={FileText}
             color="emerald"
           />
           <StatCard
             title="Attendance Marked Today"
-            value="2/3"
+            value="—"
             description="Classes recorded"
             icon={CheckCircle2}
             color="amber"
@@ -102,26 +104,28 @@ export const TeacherDashboard: React.FC = () => {
               <Button size="sm" variant="ghost" onClick={() => navigate('/courses')}>View All</Button>
             </CardHeader>
             <CardContent>
-              <div className="space-y-3">
-                {(courses.length > 0 ? courses : [
-                  { id: '1', name: 'Data Structures & Algorithms', code: 'CS301', credits: 4, semester: 3 },
-                  { id: '2', name: 'Database Management Systems', code: 'CS302', credits: 3, semester: 3 },
-                  { id: '3', name: 'Computer Networks', code: 'CS401', credits: 3, semester: 5 },
-                ]).map((course) => (
-                  <div key={course.id} className="flex items-center justify-between p-3.5 rounded-xl bg-accent/30 border border-border/40 text-xs">
-                    <div>
-                      <span className="font-mono px-2 py-0.5 rounded bg-primary/20 text-primary font-bold mr-2">
-                        {course.code}
-                      </span>
-                      <span className="font-bold text-foreground">{course.name}</span>
-                      <p className="text-muted-foreground mt-1">Semester {course.semester} • {course.credits} Credits</p>
+              {courses.length === 0 ? (
+                <div className="rounded-2xl border border-dashed border-border bg-accent/10 p-6 text-center text-sm text-muted-foreground">
+                  No assigned courses are available yet.
+                </div>
+              ) : (
+                <div className="space-y-3">
+                  {courses.map((course) => (
+                    <div key={course.id} className="flex items-center justify-between p-3.5 rounded-xl bg-accent/30 border border-border/40 text-xs">
+                      <div>
+                        <span className="font-mono px-2 py-0.5 rounded bg-primary/20 text-primary font-bold mr-2">
+                          {course.code}
+                        </span>
+                        <span className="font-bold text-foreground">{course.name}</span>
+                        <p className="text-muted-foreground mt-1">Semester {course.semester}{course.credits != null ? ` • ${course.credits} Credits` : ''}</p>
+                      </div>
+                      <Button size="sm" variant="outline" onClick={() => navigate('/attendance')}>
+                        Attendance
+                      </Button>
                     </div>
-                    <Button size="sm" variant="outline" onClick={() => navigate('/attendance')}>
-                      Attendance
-                    </Button>
-                  </div>
-                ))}
-              </div>
+                  ))}
+                </div>
+              )}
             </CardContent>
           </Card>
 
@@ -132,22 +136,25 @@ export const TeacherDashboard: React.FC = () => {
               <Button size="sm" variant="ghost" onClick={() => navigate('/assignments')}>View All</Button>
             </CardHeader>
             <CardContent>
-              <div className="space-y-3">
-                {(assignments.length > 0 ? assignments : [
-                  { id: '1', title: 'Binary Trees Implementation', due_date: new Date().toISOString(), total_marks: 20, submission_count: 18 },
-                  { id: '2', title: 'SQL Normalization Problem Set', due_date: new Date().toISOString(), total_marks: 30, submission_count: 24 },
-                ]).map((a) => (
-                  <div key={a.id} className="flex items-center justify-between p-3.5 rounded-xl bg-accent/30 border border-border/40 text-xs">
-                    <div>
-                      <p className="font-bold text-foreground">{a.title}</p>
-                      <p className="text-muted-foreground mt-0.5">Marks: {a.total_marks} • Submissions: {a.submission_count}</p>
+              {assignments.length === 0 ? (
+                <div className="rounded-2xl border border-dashed border-border bg-accent/10 p-6 text-center text-sm text-muted-foreground">
+                  No active assignments have been published yet.
+                </div>
+              ) : (
+                <div className="space-y-3">
+                  {assignments.map((a) => (
+                    <div key={a.id} className="flex items-center justify-between p-3.5 rounded-xl bg-accent/30 border border-border/40 text-xs">
+                      <div>
+                        <p className="font-bold text-foreground">{a.title}</p>
+                        <p className="text-muted-foreground mt-0.5">Marks: {a.total_marks} • Submissions: {a.submission_count}</p>
+                      </div>
+                      <span className="px-2 py-1 rounded bg-emerald-500/10 text-emerald-400 font-semibold">
+                        Active
+                      </span>
                     </div>
-                    <span className="px-2 py-1 rounded bg-emerald-500/10 text-emerald-400 font-semibold">
-                      Active
-                    </span>
-                  </div>
-                ))}
-              </div>
+                  ))}
+                </div>
+              )}
             </CardContent>
           </Card>
         </div>
