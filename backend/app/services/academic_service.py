@@ -128,6 +128,13 @@ class AttendanceService:
         if current_user.get("role") not in {"teacher", "admin"}:
             raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Teacher or Admin access required")
         query = {"semester": 3, "is_active": {"$ne": False}}
+        if current_user.get("role") == "teacher":
+            teacher = await get_collection("teachers").find_one({"user_id": str(current_user["_id"])})
+            if not teacher:
+                return []
+            # The selector is a convenience only; the same ownership check is
+            # repeated by get_manageable_course before any roster/save action.
+            query["teacher_id"] = str(teacher["_id"])
 
         courses = []
         async for course in courses_col.find(query):
@@ -204,6 +211,11 @@ class AttendanceService:
         if current_user.get("role") not in {"teacher", "admin"}:
             raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Teacher or Admin access required")
 
+        if current_user.get("role") == "teacher":
+            teacher = await get_collection("teachers").find_one({"user_id": str(current_user["_id"])})
+            if not teacher or str(course.get("teacher_id")) != str(teacher["_id"]):
+                raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="You are not assigned to this course")
+
         return course
 
     async def get_course_roster(self, course: dict, attendance_date: date | datetime | str) -> dict:
@@ -213,6 +225,10 @@ class AttendanceService:
             "semester": course["semester"],
             "is_active": {"$ne": False},
         }
+        # A branch-specific course must never surface students from another
+        # branch/program. Courses with no branch remain cohort-wide.
+        if course.get("branch"):
+            query["branch"] = course["branch"]
         courses_col = get_collection("courses")
         students_col = get_collection("students")
         users_col = get_collection("users")
@@ -272,6 +288,8 @@ class AttendanceService:
     async def take_attendance(self, course: dict, attendance_date: date | datetime | str, records: list, recorded_by: str) -> dict:
         await self.ensure_indexes()
         day = self.normalize_date(attendance_date)
+        if day.date() > datetime.now(timezone.utc).date():
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Attendance cannot be recorded for a future date")
         roster = await self.get_course_roster(course, day)
         roster_ids = {student["id"] for student in roster["students"]}
         seen = set()
@@ -578,20 +596,218 @@ class AssignmentService:
     def submissions_col(self):
         return get_collection("submissions")
 
-    async def create_assignment(self, data: dict, teacher_id: str) -> dict:
+    async def ensure_indexes(self):
+        notifications_col = get_collection("notifications")
+        index_name = "uniq_assignment_student_notification"
+        indexes = await notifications_col.index_information()
+        if index_name not in indexes:
+            await notifications_col.create_index(
+                [("assignment_id", 1), ("target_user_id", 1)],
+                unique=True,
+                partialFilterExpression={
+                    "assignment_id": {"$type": "string"},
+                    "target_user_id": {"$type": "string"},
+                },
+                name=index_name,
+            )
+
+    async def _dispatch_assignment_notifications(self, assignment: dict, course: dict, current_user: dict):
+        students_col = get_collection("students")
+        notifications_col = get_collection("notifications")
         now = datetime.now(timezone.utc)
-        doc = {**data, "teacher_id": teacher_id, "is_active": True, "created_at": now, "updated_at": now}
+        assignment_id = str(assignment.get("_id", assignment.get("id", "")))
+        course_id = str(course.get("_id", course.get("id", "")))
+
+        student_query = {
+            "department_id": course["department_id"],
+            "semester": course["semester"],
+            "is_active": {"$ne": False},
+        }
+        if course.get("branch"):
+            student_query["branch"] = course["branch"]
+
+        async for student in students_col.find(student_query):
+            student_user_id = str(student.get("user_id", ""))
+            if not student_user_id:
+                continue
+
+            notification_filter = {
+                "assignment_id": assignment_id,
+                "target_user_id": student_user_id,
+            }
+            notification_doc = {
+                "title": "New Assignment",
+                "message": f"{assignment['title']} has been posted for {course['name']}.",
+                "type": "assignment",
+                "target_role": student_user_id,
+                "target_user_id": student_user_id,
+                "assignment_id": assignment_id,
+                "course_id": course_id,
+                "department_id": course.get("department_id"),
+                "is_read": False,
+                "created_by": str(current_user["_id"]),
+                "created_at": now,
+            }
+            await notifications_col.update_one(
+                notification_filter,
+                {"$setOnInsert": notification_doc},
+                upsert=True,
+            )
+
+    async def create_assignment(self, data: dict, current_user: dict) -> dict:
+        if not ObjectId.is_valid(data.get("course_id", "")):
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Course not found")
+
+        courses_col = get_collection("courses")
+        course = await courses_col.find_one({"_id": ObjectId(data["course_id"])})
+        if not course or course.get("is_active") is False:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Course not found")
+
+        teacher_id = None
+        if current_user.get("role") == "teacher":
+            teachers_col = get_collection("teachers")
+            teacher = await teachers_col.find_one({"user_id": str(current_user["_id"])})
+            if not teacher:
+                raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Teacher profile not found")
+            teacher_id = str(teacher["_id"])
+            if str(course.get("teacher_id")) != teacher_id:
+                raise HTTPException(
+                    status_code=status.HTTP_403_FORBIDDEN,
+                    detail="You are only permitted to create assignments for courses assigned to you.",
+                )
+        elif current_user.get("role") == "admin":
+            teacher_id = course.get("teacher_id") or str(current_user["_id"])
+        else:
+            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Teacher or Admin access required")
+
+        now = datetime.now(timezone.utc)
+        is_active = data.get("is_active", True)
+        doc = {
+            **data,
+            "teacher_id": teacher_id,
+            "is_active": is_active,
+            "created_by": str(current_user["_id"]),
+            "created_at": now,
+            "updated_at": now,
+        }
         result = await self.assignments_col.insert_one(doc)
         doc["_id"] = result.inserted_id
+
+        if is_active:
+            await self._dispatch_assignment_notifications(doc, course, current_user)
+
         return await self._enrich_assignment(doc)
+
+    async def update_assignment(self, assignment_id: str, updates: dict, current_user: dict) -> dict:
+        if not ObjectId.is_valid(assignment_id):
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Assignment not found")
+
+        existing = await self.assignments_col.find_one({"_id": ObjectId(assignment_id)})
+        if not existing:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Assignment not found")
+
+        if current_user.get("role") == "teacher":
+            teachers_col = get_collection("teachers")
+            teacher = await teachers_col.find_one({"user_id": str(current_user["_id"])})
+            if not teacher or str(existing.get("teacher_id")) != str(teacher["_id"]):
+                raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Not authorized to update this assignment")
+
+        now = datetime.now(timezone.utc)
+        updates["updated_at"] = now
+        await self.assignments_col.update_one({"_id": ObjectId(assignment_id)}, {"$set": updates})
+        updated_doc = await self.assignments_col.find_one({"_id": ObjectId(assignment_id)})
+
+        # If transitioning from draft to published, dispatch notifications
+        if not existing.get("is_active") and updated_doc.get("is_active"):
+            courses_col = get_collection("courses")
+            course = await courses_col.find_one({"_id": ObjectId(updated_doc["course_id"])})
+            if course:
+                await self._dispatch_assignment_notifications(updated_doc, course, current_user)
+
+        return await self._enrich_assignment(updated_doc)
+
+    @staticmethod
+    def _as_utc(value) -> Optional[datetime]:
+        if value is None:
+            return None
+        if isinstance(value, str):
+            value = datetime.fromisoformat(value.replace("Z", "+00:00"))
+        if not isinstance(value, datetime):
+            return None
+        if value.tzinfo is None:
+            return value.replace(tzinfo=timezone.utc)
+        return value.astimezone(timezone.utc)
+
+    def _is_past_due(self, due_date) -> bool:
+        due = self._as_utc(due_date)
+        if due is None:
+            return False
+        return datetime.now(timezone.utc) > due
+
+    async def _get_student_profile(self, current_user: dict) -> Optional[dict]:
+        return await get_collection("students").find_one({"user_id": str(current_user["_id"])})
+
+    async def _eligible_course_ids_for_student(self, student: dict) -> List[str]:
+        if not student or not student.get("department_id") or student.get("semester") is None:
+            return []
+        course_query = {
+            "department_id": student["department_id"],
+            "semester": student["semester"],
+            "is_active": {"$ne": False},
+        }
+        if student.get("branch"):
+            course_query["branch"] = student["branch"]
+        return [str(c["_id"]) async for c in get_collection("courses").find(course_query)]
+
+    def _student_status(self, assignment: dict, has_submitted: bool) -> str:
+        if has_submitted:
+            return "submitted"
+        if self._is_past_due(assignment.get("due_date")):
+            return "overdue"
+        return "pending"
+
+    async def _assert_student_can_access_assignment(self, student: dict, assignment: dict) -> None:
+        if not assignment.get("is_active", True):
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Assignment not found")
+        eligible = await self._eligible_course_ids_for_student(student)
+        if str(assignment.get("course_id")) not in eligible:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Assignment not found")
+
+    async def get_assignment(self, assignment_id: str, current_user: dict) -> dict:
+        if not ObjectId.is_valid(assignment_id):
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Assignment not found")
+        assignment = await self.assignments_col.find_one({"_id": ObjectId(assignment_id)})
+        if not assignment:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Assignment not found")
+
+        if current_user.get("role") == "student":
+            student = await self._get_student_profile(current_user)
+            if not student:
+                raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Assignment not found")
+            await self._assert_student_can_access_assignment(student, assignment)
+            enriched = await self._enrich_assignment(assignment)
+            submitted = await self.submissions_col.find_one({
+                "assignment_id": assignment_id,
+                "student_id": str(student["_id"]),
+            })
+            has_submitted = submitted is not None
+            enriched["has_submitted"] = has_submitted
+            enriched["student_status"] = self._student_status(enriched, has_submitted)
+            return enriched
+
+        return await self._enrich_assignment(assignment)
 
     async def _enrich_assignment(self, assignment: dict) -> dict:
         courses_col = get_collection("courses")
         teachers_col = get_collection("teachers")
         users_col = get_collection("users")
 
-        course = await courses_col.find_one({"_id": ObjectId(assignment["course_id"])}) if assignment.get("course_id") else None
-        teacher = await teachers_col.find_one({"_id": ObjectId(assignment["teacher_id"])}) if assignment.get("teacher_id") else None
+        course = None
+        if assignment.get("course_id") and ObjectId.is_valid(str(assignment["course_id"])):
+            course = await courses_col.find_one({"_id": ObjectId(assignment["course_id"])})
+        teacher = None
+        if assignment.get("teacher_id") and ObjectId.is_valid(str(assignment["teacher_id"])):
+            teacher = await teachers_col.find_one({"_id": ObjectId(assignment["teacher_id"])})
         teacher_name = "Unknown"
         if teacher:
             user = await users_col.find_one({"_id": ObjectId(teacher["user_id"])})
@@ -601,31 +817,78 @@ class AssignmentService:
 
         assignment["id"] = str(assignment.pop("_id")) if "_id" in assignment else assignment.get("id", "")
         assignment["course_name"] = course["name"] if course else None
+        assignment["course_code"] = course.get("code") if course else None
         assignment["teacher_name"] = teacher_name
         assignment["submission_count"] = sub_count
         return assignment
 
-    async def list_assignments(self, course_id: Optional[str] = None, teacher_id: Optional[str] = None) -> List[dict]:
-        query = {"is_active": True}
-        if course_id:
-            query["course_id"] = course_id
-        if teacher_id:
-            query["teacher_id"] = teacher_id
+    async def list_assignments(
+        self,
+        course_id: Optional[str] = None,
+        teacher_id: Optional[str] = None,
+        current_user: Optional[dict] = None,
+    ) -> List[dict]:
+        query = {}
+        student = None
+        submitted_ids: set[str] = set()
+
+        if current_user and current_user.get("role") == "student":
+            # Students may only ever see published assignments for courses derived
+            # from their own profile; supplied query parameters are ignored.
+            query["is_active"] = True
+            # Never trust client-supplied course_id; scope from the academic profile.
+            student = await self._get_student_profile(current_user)
+            eligible_course_ids = await self._eligible_course_ids_for_student(student) if student else []
+            if not eligible_course_ids:
+                return []
+            query["course_id"] = {"$in": eligible_course_ids}
+            async for s in self.submissions_col.find({"student_id": str(student["_id"])}):
+                if s.get("assignment_id"):
+                    submitted_ids.add(str(s["assignment_id"]))
+        else:
+            # Staff can see their drafts as well as published work. This lets a
+            # teacher retrieve and explicitly publish a draft without exposing it
+            # to students.
+            if course_id:
+                query["course_id"] = course_id
+            if teacher_id:
+                query["teacher_id"] = teacher_id
 
         assignments = []
         async for a in self.assignments_col.find(query).sort("created_at", -1):
             enriched = await self._enrich_assignment(a)
+            if student is not None:
+                has_submitted = enriched["id"] in submitted_ids
+                enriched["has_submitted"] = has_submitted
+                enriched["student_status"] = self._student_status(enriched, has_submitted)
             assignments.append(enriched)
+
+        if student is not None:
+            rank = {"overdue": 0, "pending": 1, "submitted": 2}
+
+            def student_sort_key(item: dict):
+                due = self._as_utc(item.get("due_date")) or datetime.max.replace(tzinfo=timezone.utc)
+                return (rank.get(item.get("student_status"), 3), due)
+
+            assignments.sort(key=student_sort_key)
 
         return assignments
 
     async def submit_assignment(self, assignment_id: str, student_id: str, content: str, file_url: str) -> dict:
+        if not ObjectId.is_valid(assignment_id):
+            raise HTTPException(status_code=404, detail="Assignment not found")
         assignment = await self.assignments_col.find_one({"_id": ObjectId(assignment_id)})
         if not assignment:
             raise HTTPException(status_code=404, detail="Assignment not found")
 
+        student = await get_collection("students").find_one({"_id": ObjectId(student_id)}) if ObjectId.is_valid(student_id) else None
+        if not student:
+            raise HTTPException(status_code=404, detail="Student profile not found")
+        await self._assert_student_can_access_assignment(student, assignment)
+
         now = datetime.now(timezone.utc)
-        is_late = now > assignment["due_date"]
+        due = self._as_utc(assignment.get("due_date"))
+        is_late = bool(due and now > due)
 
         # Check if already submitted
         existing = await self.submissions_col.find_one({

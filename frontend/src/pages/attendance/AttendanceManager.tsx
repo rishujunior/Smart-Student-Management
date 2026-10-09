@@ -62,6 +62,7 @@ export const AttendanceManager: React.FC = () => {
   const [saving, setSaving] = useState(false)
   const [exporting, setExporting] = useState(false)
   const [loadError, setLoadError] = useState('')
+  const [refreshNonce, setRefreshNonce] = useState(0)
 
   useEffect(() => {
     let cancelled = false
@@ -131,7 +132,21 @@ export const AttendanceManager: React.FC = () => {
     }
     void loadSession()
     return () => { cancelled = true }
-  }, [selectedCourse, selectedDate, user?.role])
+  }, [selectedCourse, selectedDate, user?.role, refreshNonce])
+
+  useEffect(() => {
+    if (user?.role !== 'student') return
+    const refreshStudentAttendance = () => setRefreshNonce((value) => value + 1)
+    const refreshWhenVisible = () => {
+      if (document.visibilityState === 'visible') refreshStudentAttendance()
+    }
+    window.addEventListener('focus', refreshStudentAttendance)
+    document.addEventListener('visibilitychange', refreshWhenVisible)
+    return () => {
+      window.removeEventListener('focus', refreshStudentAttendance)
+      document.removeEventListener('visibilitychange', refreshWhenVisible)
+    }
+  }, [user?.role])
 
   const selectedCourseInfo = courses.find((course) => course.id === selectedCourse)
 

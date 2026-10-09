@@ -20,6 +20,9 @@ class NotificationCreate(BaseModel):
     type: NotificationType = NotificationType.GENERAL
     target_role: Optional[str] = None  # 'all', 'student', 'teacher', specific user_id
     department_id: Optional[str] = None
+    target_user_id: Optional[str] = None
+    assignment_id: Optional[str] = None
+    course_id: Optional[str] = None
 
 
 class NotificationResponse(BaseModel):
@@ -27,8 +30,11 @@ class NotificationResponse(BaseModel):
     title: str
     message: str
     type: str
-    target_role: Optional[str]
-    department_id: Optional[str]
+    target_role: Optional[str] = None
+    department_id: Optional[str] = None
+    target_user_id: Optional[str] = None
+    assignment_id: Optional[str] = None
+    course_id: Optional[str] = None
     is_read: bool = False
     created_by: str
     created_at: datetime

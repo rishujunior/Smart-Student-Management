@@ -95,8 +95,8 @@ async def ensure_current_semester(db, name: str = "Semester III - AKTU B.Tech CS
     return str(result.inserted_id)
 
 
-async def ensure_rishu_cse_semester_three_profile(db, department_id: str) -> None:
-    user = await db.users.find_one({"full_name": "rishu_kumar", "role": "student"})
+async def ensure_aayush_cse_semester_three_profile(db, department_id: str) -> None:
+    user = await db.users.find_one({"full_name": "Aayush_Singh", "role": "student"})
     if not user:
         return
 
@@ -122,6 +122,77 @@ async def ensure_rishu_cse_semester_three_profile(db, department_id: str) -> Non
         "is_active": True,
         "created_at": now,
     })
+
+async def ensure_cse_semester_three_students(db, department_id: str) -> None:
+
+    students = [
+        ("Aayush_Singh", "rishijuniorsingh@gmail.com", "CSE3-AAYUSH"),
+        ("Rishu_Singh", "rishu.singh@student.sms.edu", "CSE3-83A9A3"),
+        ("Sunny_Singh", "sunny.singh@student.sms.edu", "CSE3-8DA828"),
+        ("Sahil_Chaturvedi", "sahil.chaturvedi@student.sms.edu", "CSE3-C42A0D"),
+        ("Shreyansh_Srivastav", "shreyansh.srivastav@student.sms.edu", "CSE3-F74287"),
+    ]
+
+    now = utc_now()
+
+    for full_name, email, enrollment_number in students:
+        user = await db.users.find_one({
+            "email": email,
+            "role": "student",
+        })
+
+        if not user:
+            user = await db.users.find_one({
+                "full_name": full_name,
+                "role": "student",
+            })
+
+        if not user:
+            await ensure_user(
+                db,
+                email,
+                "Student@123",
+                full_name,
+                "student",
+            )
+            user = await db.users.find_one({
+                "email": email,
+                "role": "student",
+            })
+
+        if not user:
+            continue
+
+        await db.users.update_one(
+            {"_id": user["_id"]},
+            {
+                "$set": {
+                    "full_name": full_name,
+                    "role": "student",
+                    "is_active": True,
+                }
+            },
+        )
+
+        await db.students.update_one(
+            {"user_id": str(user["_id"])},
+            {
+                "$set": {
+                    "department_id": department_id,
+                    "branch": "CSE",
+                    "semester": 3,
+                    "enrollment_number": enrollment_number,
+                    "batch_year": max(now.year - 1, 2000),
+                    "is_active": True,
+                    "updated_at": now,
+                },
+                "$setOnInsert": {
+                    "user_id": str(user["_id"]),
+                    "created_at": now,
+                },
+            },
+            upsert=True,
+        )
 
 
 async def find_teacher_id(db, faculty_name: str | None) -> str | None:
@@ -234,7 +305,14 @@ async def seed_database(demo_data: bool = False) -> Dict[str, Any]:
         "AKTU B.Tech Computer Science and Engineering department",
     )
     print("✅ Department ensured: CSE")
-    await ensure_rishu_cse_semester_three_profile(db, department_id)
+    await ensure_user(
+        db,
+        "aayush.singh@student.sms.edu",
+        "Student@123",
+        "Aayush_Singh",
+        "student",
+    )
+    await ensure_cse_semester_three_students(db, department_id)
 
     teacher_user_id = await ensure_user(
         db,

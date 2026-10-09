@@ -1,10 +1,11 @@
 import React, { useEffect, useState } from 'react'
+import { useNavigate } from 'react-router-dom'
 import { DashboardLayout } from '../../components/layout/DashboardLayout'
 import { Card } from '../../components/ui/Card'
 import { Button } from '../../components/ui/Button'
 import { Input } from '../../components/ui/Input'
 import { Modal } from '../../components/ui/Modal'
-import { Plus, Pin } from 'lucide-react'
+import { Plus, Pin, ArrowRight } from 'lucide-react'
 import { toast } from 'sonner'
 import api from '../../lib/api'
 import type { Notification } from '../../types'
@@ -12,6 +13,7 @@ import { useAuth } from '../../context/AuthContext'
 
 export const NoticeBoard: React.FC = () => {
   const { user } = useAuth()
+  const navigate = useNavigate()
   const [notices, setNotices] = useState<Notification[]>([])
   const [isModalOpen, setIsModalOpen] = useState(false)
 
@@ -80,6 +82,18 @@ export const NoticeBoard: React.FC = () => {
               </div>
               <h3 className="text-lg font-bold text-foreground mt-3">{n.title}</h3>
               <p className="text-sm text-muted-foreground mt-1 leading-relaxed">{n.message}</p>
+              {n.assignment_id && (
+                <div className="mt-4 pt-3 border-t border-border/40 flex justify-end">
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    onClick={() => navigate(`/assignments?id=${n.assignment_id}`)}
+                    className="gap-1.5 text-xs text-primary hover:text-primary"
+                  >
+                    View Assignment <ArrowRight className="h-3.5 w-3.5" />
+                  </Button>
+                </div>
+              )}
             </Card>
           ))}
         </div>

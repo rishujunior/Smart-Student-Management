@@ -1,180 +1,75 @@
-import React, { useEffect, useState } from 'react'
+import React, { useEffect, useMemo, useState } from 'react'
+import { useNavigate } from 'react-router-dom'
+import { ArrowRight, Award, Bell, BookOpen, BrainCircuit, CalendarCheck, CheckCircle2, ClipboardList, FileText, GraduationCap, Sparkles, Target, TrendingUp } from 'lucide-react'
 import { DashboardLayout } from '../../components/layout/DashboardLayout'
-import { StatCard } from '../../components/ui/StatCard'
-import { Card, CardHeader, CardTitle, CardContent } from '../../components/ui/Card'
-import { Award, CalendarCheck, BookOpen, FileText, Sparkles, Download, ArrowUpRight } from 'lucide-react'
 import { Button } from '../../components/ui/Button'
+import { Card, CardContent } from '../../components/ui/Card'
 import { useAuth } from '../../context/AuthContext'
 import api from '../../lib/api'
-import type { Student, AttendanceSummary, Result } from '../../types'
-import { useNavigate } from 'react-router-dom'
+import type { Assignment, AttendanceSummary, Course, Notification, Result, Student } from '../../types'
+
+const shortDate = (value: string) => new Date(value).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })
+const greeting = () => new Date().getHours() < 12 ? 'Good morning' : new Date().getHours() < 18 ? 'Good afternoon' : 'Good evening'
 
 export const StudentDashboard: React.FC = () => {
   const { user } = useAuth()
   const navigate = useNavigate()
   const [profile, setProfile] = useState<Student | null>(null)
+  const [courses, setCourses] = useState<Course[]>([])
   const [attendance, setAttendance] = useState<AttendanceSummary[]>([])
   const [results, setResults] = useState<Result[]>([])
-  const [aiTip, setAiTip] = useState<string>('')
+  const [assignments, setAssignments] = useState<Assignment[]>([])
+  const [notices, setNotices] = useState<Notification[]>([])
   const [loading, setLoading] = useState(true)
 
   useEffect(() => {
-    const fetchStudentData = async () => {
+    let cancelled = false
+    const load = async () => {
       try {
-        const profRes = await api.get('/students/me')
-        setProfile(profRes.data)
-
-        if (profRes.data?.id) {
-          const [attRes, resRes] = await Promise.all([
-            api.get(`/attendance/student/${profRes.data.id}/summary`),
-            api.get(`/results/student/${profRes.data.id}`),
-          ])
-          setAttendance(attRes.data || [])
-          setResults(resRes.data || [])
-        }
-      } catch (err) {
-        console.error('Failed to load student dashboard', err)
-      } finally {
-        setLoading(false)
-      }
+        const profileResponse = await api.get('/students/me')
+        const id = profileResponse.data?.id
+        const [courseResponse, attendanceResponse, resultResponse, assignmentResponse, noticeResponse] = await Promise.all([
+          api.get('/attendance/student/courses'),
+          id ? api.get(`/attendance/student/${id}/summary`) : Promise.resolve({ data: [] }),
+          id ? api.get(`/results/student/${id}`) : Promise.resolve({ data: [] }),
+          api.get('/assignments'), api.get('/notifications'),
+        ])
+        if (cancelled) return
+        setProfile(profileResponse.data); setCourses(courseResponse.data || []); setAttendance(attendanceResponse.data || [])
+        setResults(resultResponse.data || []); setAssignments(assignmentResponse.data || []); setNotices(noticeResponse.data || [])
+      } catch (error) { console.error('Failed to load student dashboard', error) }
+      finally { if (!cancelled) setLoading(false) }
     }
-
-    fetchStudentData()
+    void load(); return () => { cancelled = true }
   }, [])
 
-  const handleFetchAiTip = async () => {
-    try {
-      const res = await api.post('/ai/ask', {
-        query: 'Give me a quick 2-sentence motivational study tip for engineering exams.',
-      })
-      setAiTip(res.data.response)
-    } catch {
-      setAiTip('Focus on understanding concepts, not just memorizing formulas. Review one weak area daily and practice timed problems.')
-    }
-  }
+  const overallAttendance = attendance.length ? Math.round(attendance.reduce((total, item) => total + item.percentage, 0) / attendance.length) : null
+  const pending = useMemo(() => assignments.filter((item) => item.student_status === 'pending' || item.student_status === 'overdue'), [assignments])
+  const upcoming = useMemo(() => [...pending].sort((a, b) => +new Date(a.due_date) - +new Date(b.due_date)).slice(0, 4), [pending])
+  const recentResults = useMemo(() => [...results].sort((a, b) => +new Date(b.created_at) - +new Date(a.created_at)).slice(0, 4), [results])
+  const recentNotices = useMemo(() => [...notices].sort((a, b) => +new Date(b.created_at) - +new Date(a.created_at)).slice(0, 3), [notices])
+  const attendanceItems = useMemo(() => [...attendance].sort((a, b) => a.percentage - b.percentage).slice(0, 5), [attendance])
+  const dueThisWeek = pending.filter((item) => +new Date(item.due_date) - Date.now() >= 0 && +new Date(item.due_date) - Date.now() <= 604800000).length
+  const firstName = user?.full_name?.split(/[ _]/)[0] || 'Student'
 
-  const overallAttendance = attendance.length
-    ? Math.round(attendance.reduce((acc, curr) => acc + curr.percentage, 0) / attendance.length)
-    : 0
+  if (loading) return <DashboardLayout><div className="space-y-5 animate-pulse"><div className="h-52 rounded-3xl border border-border bg-card/60" /><div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">{Array.from({ length: 4 }).map((_, i) => <div key={i} className="h-32 rounded-2xl border border-border bg-card/60" />)}</div><div className="grid gap-5 xl:grid-cols-3"><div className="h-72 rounded-2xl border border-border bg-card/60 xl:col-span-2" /><div className="h-72 rounded-2xl border border-border bg-card/60" /></div></div></DashboardLayout>
 
-  const displayedResults = results.slice(0, 3)
-  const displayedAttendance = attendance.slice(0, 4)
+  const stats = [
+    ['Current CGPA', profile?.cgpa?.toFixed(2) || '—', 'Cumulative performance', Award, 'text-violet-300 bg-violet-500/12'],
+    ['Overall attendance', overallAttendance === null ? '—' : `${overallAttendance}%`, overallAttendance === null ? 'No classes recorded' : overallAttendance >= 75 ? 'Above required 75%' : 'Below required 75%', CalendarCheck, overallAttendance !== null && overallAttendance < 75 ? 'text-rose-300 bg-rose-500/12' : 'text-emerald-300 bg-emerald-500/12'],
+    ['Enrolled courses', courses.length || '—', profile ? `Semester ${profile.semester}` : 'Current semester', BookOpen, 'text-sky-300 bg-sky-500/12'],
+    ['Pending work', pending.length, dueThisWeek ? `${dueThisWeek} due this week` : 'All caught up this week', ClipboardList, 'text-amber-300 bg-amber-500/12'],
+  ] as const
 
-  if (loading) {
-    return (
-      <DashboardLayout>
-        <div className="space-y-6 animate-fade-in">
-          <div className="h-40 rounded-3xl border border-border bg-card/80" />
-          <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-4">
-            {Array.from({ length: 4 }).map((_, index) => (
-              <div key={index} className="h-32 rounded-2xl border border-border bg-card/80" />
-            ))}
-          </div>
-        </div>
-      </DashboardLayout>
-    )
-  }
-
-  return (
-    <DashboardLayout>
-      <div className="space-y-6 animate-fade-in">
-        <div className="relative overflow-hidden rounded-3xl border border-primary/20 bg-gradient-to-r from-blue-950/35 via-indigo-950/30 to-slate-950/50 p-6">
-          <div className="absolute right-0 top-0 h-52 w-52 rounded-full bg-primary/10 blur-3xl" />
-          <div className="relative flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
-            <div>
-              <div className="mb-3 inline-flex items-center gap-2 rounded-full border border-primary/20 bg-primary/10 px-3 py-1 text-[10px] font-semibold uppercase tracking-[0.18em] text-primary">
-                Semester {profile?.semester || 3} • Enrolled
-              </div>
-              <h2 className="text-2xl font-bold tracking-tight text-foreground md:text-3xl">Welcome back, {user?.full_name}! 👋</h2>
-              <p className="mt-2 text-sm text-muted-foreground">
-                Enrollment No: <span className="font-mono font-semibold text-foreground">{profile?.enrollment_number || '—'}</span> • {profile?.department_name || 'Computer Science Engineering'}
-              </p>
-            </div>
-            <Button onClick={() => window.open(`/api/v1/reports/student/${profile?.id}/pdf`, '_blank')} variant="outline" className="gap-2">
-              <Download className="h-4 w-4" /> Report card
-            </Button>
-          </div>
-        </div>
-
-        <div className="rounded-2xl border border-purple-500/20 bg-gradient-to-r from-purple-500/10 via-fuchsia-500/10 to-slate-950/40 p-4">
-          <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
-            <div className="flex items-center gap-3">
-              <div className="flex h-11 w-11 items-center justify-center rounded-2xl bg-purple-500/15 text-purple-300">
-                <Sparkles className="h-5 w-5 fill-purple-300" />
-              </div>
-              <div>
-                <p className="text-[10px] font-bold uppercase tracking-[0.18em] text-purple-300">Gemini AI study assistant</p>
-                <p className="mt-1 text-sm text-foreground">{aiTip || 'Tap for a quick motivation boost and study strategy.'}</p>
-              </div>
-            </div>
-            <Button size="sm" variant="ai" onClick={handleFetchAiTip}>Get tip</Button>
-          </div>
-        </div>
-
-        <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
-          <StatCard title="Current CGPA" value={profile?.cgpa ? profile.cgpa.toFixed(2) : '—'} description="Cumulative performance" icon={Award} color="purple" />
-          <StatCard title="Overall Attendance" value={overallAttendance ? `${overallAttendance}%` : '—'} description="Minimum required: 75%" icon={CalendarCheck} color={overallAttendance >= 75 ? 'emerald' : 'rose'} />
-          <StatCard title="Enrolled Courses" value={attendance.length || 0} description="Current semester" icon={BookOpen} color="blue" />
-          <StatCard title="Pending Assignments" value={results.length ? '2' : '0'} description="Needs attention" icon={FileText} color="amber" />
-        </div>
-
-        <div className="grid gap-6 xl:grid-cols-2">
-          <Card>
-            <CardHeader className="flex items-center justify-between">
-              <CardTitle>Attendance by subject</CardTitle>
-              <Button size="sm" variant="ghost" onClick={() => navigate('/attendance')}>View all</Button>
-            </CardHeader>
-            <CardContent>
-              {displayedAttendance.length ? (
-                <div className="space-y-4">
-                  {displayedAttendance.map((item) => (
-                    <div key={item.course_id || item.course_name} className="space-y-2">
-                      <div className="flex items-center justify-between gap-3 text-xs font-medium">
-                        <span className="text-foreground">{item.course_name}</span>
-                        <span className={item.percentage >= 75 ? 'text-emerald-400' : 'text-rose-400'}>{item.percentage}%</span>
-                      </div>
-                      <div className="h-2.5 overflow-hidden rounded-full bg-accent">
-                        <div className={`h-full rounded-full ${item.percentage >= 75 ? 'bg-emerald-500' : 'bg-rose-500'}`} style={{ width: `${item.percentage}%` }} />
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              ) : (
-                <div className="rounded-2xl border border-dashed border-border bg-accent/10 p-6 text-center text-sm text-muted-foreground">No attendance summary available yet.</div>
-              )}
-            </CardContent>
-          </Card>
-
-          <Card>
-            <CardHeader className="flex items-center justify-between">
-              <CardTitle>Latest marks</CardTitle>
-              <Button size="sm" variant="ghost" onClick={() => navigate('/results')}>View all</Button>
-            </CardHeader>
-            <CardContent>
-              {displayedResults.length ? (
-                <div className="space-y-3">
-                  {displayedResults.map((result) => (
-                    <div key={result.id} className="flex items-center justify-between gap-3 rounded-2xl border border-border bg-accent/20 p-3.5 transition-all hover:border-primary/20 hover:bg-accent/25">
-                      <div>
-                        <p className="font-semibold text-foreground">{result.course_name || 'Course'}</p>
-                        <p className="mt-1 text-xs text-muted-foreground">{result.total_marks} / {result.max_marks} marks</p>
-                      </div>
-                      <div className="flex items-center gap-2">
-                        <span className="rounded-full bg-primary/10 px-2 py-1 text-[10px] font-bold uppercase tracking-[0.16em] text-primary">
-                          {result.grade}
-                        </span>
-                        <ArrowUpRight className="h-4 w-4 text-muted-foreground" />
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              ) : (
-                <div className="rounded-2xl border border-dashed border-border bg-accent/10 p-6 text-center text-sm text-muted-foreground">No marks have been recorded yet.</div>
-              )}
-            </CardContent>
-          </Card>
-        </div>
-      </div>
-    </DashboardLayout>
-  )
+  return <DashboardLayout><div className="space-y-5 pb-6 animate-fade-in">
+    <section className="relative overflow-hidden rounded-3xl border border-primary/20 bg-[linear-gradient(120deg,rgba(49,46,129,0.42),rgba(30,41,75,0.72)_50%,rgba(15,23,42,0.94))] p-6 shadow-[0_24px_60px_-38px_rgba(99,102,241,0.9)] md:p-7"><div className="pointer-events-none absolute -right-20 -top-24 h-72 w-72 rounded-full bg-violet-500/20 blur-3xl" /><div className="relative flex flex-col gap-6 lg:flex-row lg:items-end lg:justify-between"><div><div className="inline-flex items-center gap-2 rounded-full border border-violet-300/15 bg-violet-300/[0.07] px-3 py-1 text-[10px] font-bold uppercase tracking-[0.15em] text-violet-200"><GraduationCap className="h-3.5 w-3.5" /> Academic dashboard</div><h1 className="mt-4 text-3xl font-bold tracking-tight text-white md:text-4xl">{greeting()}, {firstName} <span aria-hidden="true">👋</span></h1><p className="mt-2 text-sm text-slate-300">Here&apos;s what&apos;s happening with your academics today.</p></div><div className="flex flex-wrap gap-2 text-xs"><span className="rounded-xl border border-white/10 bg-black/10 px-3 py-2 text-slate-200">Semester {profile?.semester ?? '—'}</span><span className="rounded-xl border border-white/10 bg-black/10 px-3 py-2 text-slate-200">{profile?.branch || profile?.department_name || 'Department'}</span><span className="rounded-xl border border-white/10 bg-black/10 px-3 py-2 font-mono text-slate-300">{profile?.enrollment_number || 'No enrollment no.'}</span></div></div></section>
+    <section aria-label="Quick overview" className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">{stats.map(([label, value, detail, Icon, tone]) => <Card key={label} className="group border-border/80 bg-card/80 transition hover:-translate-y-0.5 hover:border-primary/30 hover:shadow-[0_18px_30px_-24px_rgba(99,102,241,0.8)]"><CardContent className="p-5"><div className="flex justify-between"><p className="text-xs font-medium text-muted-foreground">{label}</p><span className={`flex h-9 w-9 items-center justify-center rounded-xl ${tone}`}><Icon className="h-4 w-4" /></span></div><p className="mt-4 text-3xl font-bold tracking-tight text-foreground">{value}</p><p className="mt-1 text-xs text-muted-foreground">{detail}</p></CardContent></Card>)}</section>
+    <section className="grid gap-5 xl:grid-cols-3"><Card className="border-border/80 bg-card/80 xl:col-span-2"><CardContent className="p-5 md:p-6"><SectionHeader title="Attendance overview" subtitle="Course-wise attendance from recorded classes." action="View all" onClick={() => navigate('/attendance')} />{attendanceItems.length ? <div className="mt-6 grid gap-4 md:grid-cols-2">{attendanceItems.map((item) => <div key={item.course_id} className="rounded-2xl border border-border/70 bg-accent/[0.18] p-4"><div className="flex justify-between gap-3"><p className="truncate text-sm font-semibold text-foreground">{item.course_name}</p><span className={item.percentage >= 75 ? 'text-sm font-bold text-emerald-400' : 'text-sm font-bold text-rose-400'}>{item.percentage}%</span></div><div className="mt-3 h-1.5 overflow-hidden rounded-full bg-border/70"><div className={item.percentage >= 75 ? 'h-full rounded-full bg-gradient-to-r from-emerald-500 to-cyan-400' : 'h-full rounded-full bg-gradient-to-r from-rose-500 to-orange-400'} style={{ width: `${item.percentage}%` }} /></div><p className="mt-2 text-xs text-muted-foreground">{item.present + item.late} attended · {item.total} classes</p></div>)}</div> : <EmptyState text="No attendance data yet" detail="Your attendance will appear here once classes are recorded." action="View Attendance" onClick={() => navigate('/attendance')} />}</CardContent></Card><Card className="border-border/80 bg-card/80"><CardContent className="p-5 md:p-6"><SectionHeader title="Upcoming assignments" subtitle="Your next coursework deadlines." icon={FileText} />{upcoming.length ? <div className="mt-5 space-y-2">{upcoming.map((item) => <button type="button" key={item.id} onClick={() => navigate(`/assignments?id=${item.id}`)} className="flex w-full items-center justify-between gap-3 rounded-xl border border-border/70 bg-accent/[0.16] p-3 text-left transition hover:border-primary/30 hover:bg-accent/35"><div className="min-w-0"><p className="truncate text-sm font-semibold text-foreground">{item.title}</p><p className="mt-1 text-xs text-muted-foreground">{item.course_name || 'Course'} · Due {shortDate(item.due_date)}</p></div><span className={item.student_status === 'overdue' ? 'rounded-full bg-rose-500/12 px-2 py-1 text-[10px] font-bold text-rose-400' : 'rounded-full bg-amber-500/12 px-2 py-1 text-[10px] font-bold text-amber-400'}>{item.student_status === 'overdue' ? 'Overdue' : 'Pending'}</span></button>)}</div> : <EmptyState compact text="No pending assignments" detail="You have no coursework needing attention." action="View Assignments" onClick={() => navigate('/assignments')} />}</CardContent></Card></section>
+    <section className="grid gap-5 xl:grid-cols-[1.15fr_0.85fr]"><Card className="border-border/80 bg-card/80"><CardContent className="p-5 md:p-6"><SectionHeader title="Recent results" subtitle="Latest recorded marks and grades." action="View all" onClick={() => navigate('/results')} />{recentResults.length ? <div className="mt-5 overflow-x-auto"><table className="w-full min-w-[420px] text-left text-sm"><thead className="border-b border-border/70 text-xs text-muted-foreground"><tr><th className="pb-3 font-medium">Course</th><th className="pb-3 font-medium">Marks</th><th className="pb-3 font-medium">Grade</th><th className="pb-3 text-right font-medium">Status</th></tr></thead><tbody>{recentResults.map((item) => <tr key={item.id} className="border-b border-border/40 last:border-0"><td className="py-3.5 font-medium text-foreground">{item.course_name || 'Course'}</td><td className="py-3.5 text-muted-foreground">{item.total_marks} / {item.max_marks}</td><td className="py-3.5"><span className="rounded-lg bg-violet-500/12 px-2 py-1 text-xs font-bold text-violet-300">{item.grade}</span></td><td className={item.is_pass ? 'py-3.5 text-right text-xs font-semibold text-emerald-400' : 'py-3.5 text-right text-xs font-semibold text-rose-400'}>{item.is_pass ? 'Passed' : 'Needs review'}</td></tr>)}</tbody></table></div> : <EmptyState text="No marks recorded yet" detail="Your published marks will appear here." action="View Results" onClick={() => navigate('/results')} />}</CardContent></Card><Card className="border-border/80 bg-card/80"><CardContent className="p-5 md:p-6"><SectionHeader title="Announcements" subtitle="Recent notices for you." icon={Bell} />{recentNotices.length ? <div className="mt-5 space-y-3">{recentNotices.map((notice) => <button type="button" onClick={() => navigate(notice.assignment_id ? `/assignments?id=${notice.assignment_id}` : '/notices')} key={notice.id} className="flex w-full gap-3 rounded-xl text-left transition hover:bg-accent/35"><span className={`mt-1.5 h-2 w-2 shrink-0 rounded-full ${notice.is_read ? 'bg-muted-foreground/35' : 'bg-sky-400 shadow-[0_0_10px_rgba(56,189,248,0.7)]'}`} /><div className="min-w-0"><p className="truncate text-sm font-semibold text-foreground">{notice.title}</p><p className="mt-1 line-clamp-1 text-xs text-muted-foreground">{notice.message}</p><p className="mt-1.5 text-[11px] text-muted-foreground">{shortDate(notice.created_at)} · {notice.type}</p></div></button>)}</div> : <EmptyState compact text="No announcements yet" detail="New notices will show up here." action="Notice Board" onClick={() => navigate('/notices')} />}</CardContent></Card></section>
+    <section className="grid gap-5 lg:grid-cols-[0.9fr_1.1fr]"><Card className="overflow-hidden border-violet-400/15 bg-[linear-gradient(135deg,rgba(109,40,217,0.18),rgba(30,41,59,0.68)_65%)]"><CardContent className="relative p-6"><div className="absolute -right-5 -top-6 h-28 w-28 rounded-full bg-violet-400/15 blur-2xl" /><div className="relative"><span className="flex h-10 w-10 items-center justify-center rounded-xl bg-violet-400/15 text-violet-200"><BrainCircuit className="h-5 w-5" /></span><p className="mt-4 text-lg font-semibold text-white">Your AI Study Assistant</p><p className="mt-2 text-sm leading-6 text-slate-300">Need help planning today&apos;s study session? Get focused support from Gemini.</p><div className="mt-5 flex flex-wrap gap-2"><Button size="sm" variant="ai" onClick={() => navigate('/ai-assistant')}><Sparkles className="h-3.5 w-3.5" /> Ask AI</Button><Button size="sm" variant="outline" onClick={() => navigate('/ai-assistant')}>Get study plan</Button></div></div></CardContent></Card><Card className="border-border/80 bg-card/80"><CardContent className="p-6"><div className="flex items-center gap-2"><Target className="h-4 w-4 text-amber-300" /><p className="text-lg font-semibold text-foreground">Today</p></div><div className="mt-5 grid gap-3 sm:grid-cols-3"><Activity label="Attendance" detail={overallAttendance === null ? 'No records yet' : `${overallAttendance}% overall`} icon={CalendarCheck} /><Activity label="Coursework" detail={pending.length ? `${pending.length} to review` : 'All caught up'} icon={CheckCircle2} /><Activity label="Performance" detail={profile?.cgpa ? `CGPA ${profile.cgpa.toFixed(2)}` : 'No CGPA yet'} icon={TrendingUp} /></div></CardContent></Card></section>
+  </div></DashboardLayout>
 }
+
+const SectionHeader: React.FC<{ title: string; subtitle: string; action?: string; onClick?: () => void; icon?: React.ElementType }> = ({ title, subtitle, action, onClick, icon: Icon }) => <div className="flex items-start justify-between gap-3"><div><p className="text-lg font-semibold text-foreground">{title}</p><p className="mt-1 text-xs text-muted-foreground">{subtitle}</p></div>{action ? <Button size="sm" variant="ghost" onClick={onClick}>{action} <ArrowRight className="h-3.5 w-3.5" /></Button> : Icon ? <Icon className="h-5 w-5 text-violet-300" /> : null}</div>
+const EmptyState: React.FC<{ text: string; detail: string; action: string; onClick: () => void; compact?: boolean }> = ({ text, detail, action, onClick, compact }) => <div className={`mt-5 rounded-2xl border border-dashed border-border bg-accent/[0.12] text-center ${compact ? 'p-5' : 'p-7'}`}><p className="text-sm font-semibold text-foreground">{text}</p><p className="mx-auto mt-1 max-w-sm text-xs leading-5 text-muted-foreground">{detail}</p><Button className="mt-4" size="sm" variant="outline" onClick={onClick}>{action}</Button></div>
+const Activity: React.FC<{ label: string; detail: string; icon: React.ElementType }> = ({ label, detail, icon: Icon }) => <div className="rounded-xl border border-border/70 bg-accent/[0.16] p-3"><Icon className="h-4 w-4 text-primary" /><p className="mt-3 text-xs font-semibold text-foreground">{label}</p><p className="mt-1 text-xs text-muted-foreground">{detail}</p></div>

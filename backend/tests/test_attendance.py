@@ -1,4 +1,4 @@
-from datetime import date, datetime, timezone
+from datetime import date, datetime, timedelta, timezone
 from uuid import uuid4
 
 import pytest
@@ -27,6 +27,8 @@ async def test_teacher_can_save_reload_and_update_daily_attendance(client: Async
     course_id = ObjectId()
     test_student_user_ids = [ObjectId(), ObjectId(), ObjectId()]
     test_student_ids = [ObjectId(), ObjectId(), ObjectId()]
+    unrelated_user_id = ObjectId()
+    unrelated_student_id = ObjectId()
     await users.insert_one({
         "_id": teacher_user_id,
         "email": f"attendance-teacher-{suffix}@test.sms.edu",
@@ -47,6 +49,7 @@ async def test_teacher_can_save_reload_and_update_daily_attendance(client: Async
         "code": f"AT{suffix}".upper(),
         "department_id": str(department["_id"]),
         "semester": 3,
+        "branch": "CSE",
         "teacher_id": str(teacher_id),
         "is_active": True,
         "subject_type": "theory",
@@ -67,34 +70,41 @@ async def test_teacher_can_save_reload_and_update_daily_attendance(client: Async
             "enrollment_number": f"AT{suffix}{index}",
             "department_id": str(department["_id"]),
             "semester": 3,
+            "branch": "CSE",
             "is_active": True,
         })
 
+    await users.insert_one({
+        "_id": unrelated_user_id,
+        "email": f"attendance-unrelated-{suffix}@test.sms.edu",
+        "full_name": f"Attendance Unrelated Student {suffix}",
+        "role": "student",
+        "is_active": True,
+    })
+    await students.insert_one({
+        "_id": unrelated_student_id,
+        "user_id": str(unrelated_user_id),
+        "enrollment_number": f"ATECE{suffix}",
+        "department_id": str(department["_id"]),
+        "semester": 3,
+        "branch": "ECE",
+        "is_active": True,
+    })
+
     token = create_access_token({"sub": str(teacher_user_id), "role": "teacher"})
     headers = {"Authorization": f"Bearer {token}"}
-    selected_date = date.today().isoformat()
+    selected_date = (date.today() - timedelta(days=1)).isoformat()
     course_id_str = str(course_id)
 
     try:
         courses_response = await client.get("/api/v1/attendance/courses", headers=headers)
         assert courses_response.status_code == 200, courses_response.text
-        assert any(course["id"] == course_id_str for course in courses_response.json())
-        official_names = {
-            "BCS301": "Data Structure",
-            "BCS302": "Computer Organization & Architecture",
-            "BCS303": "Discrete Structures & Theory of Logic",
-            "BAS303": "Mathematics-IV",
-            "BVE301": "Universal Human Values & Professional Ethics",
-            "BCC302": "Python Programming",
-            "BCS351": "Data Structure Lab",
-            "BCS352": "Computer Organization & Architecture Lab",
-            "BCS353": "Web Designing Workshop",
-            "BCC351": "Internship Assessment / Mini Project",
-        }
-        official_courses = [course for course in courses_response.json() if course["code"] in official_names]
-        assert [course["code"] for course in official_courses] == list(official_names)
-        assert {course["code"]: course["name"] for course in official_courses} == official_names
-        assert all("teacher_name" not in course and "faculty_name" not in course for course in courses_response.json())
+        # A teacher sees only explicitly assigned courses, not the department's
+        # entire Semester III catalogue.
+        managed_courses = courses_response.json()
+        assert [course["id"] for course in managed_courses] == [course_id_str]
+        assert managed_courses[0]["code"] == f"AT{suffix}".upper()
+        assert managed_courses[0]["teacher_id"] == str(teacher_id)
 
         roster_response = await client.get(
             f"/api/v1/attendance/course/{course_id_str}/roster",
@@ -104,6 +114,7 @@ async def test_teacher_can_save_reload_and_update_daily_attendance(client: Async
         assert roster_response.status_code == 200, roster_response.text
         roster = roster_response.json()
         assert all(student_id in {student["id"] for student in roster["students"]} for student_id in map(str, test_student_ids))
+        assert str(unrelated_student_id) not in {student["id"] for student in roster["students"]}
         assert roster["summary"]["total_students"] == len(roster["students"])
 
         selected_students = [student for student in roster["students"] if student["id"] in set(map(str, test_student_ids))]
@@ -133,6 +144,25 @@ async def test_teacher_can_save_reload_and_update_daily_attendance(client: Async
         assert historical_rates[records[0]["student_id"]] == 100
         assert historical_rates[records[1]["student_id"]] == 0
         assert historical_rates[records[2]["student_id"]] == 100
+
+        # The student-facing endpoints read these persisted records and cannot
+        # be used by one student to inspect another student's attendance.
+        student_headers = {"Authorization": f"Bearer {create_access_token({'sub': str(test_student_user_ids[0]), 'role': 'student'})}"}
+        personal_summary = await client.get(
+            f"/api/v1/attendance/student/{records[0]['student_id']}/summary",
+            headers=student_headers,
+        )
+        assert personal_summary.status_code == 200, personal_summary.text
+        personal_course = next(item for item in personal_summary.json() if item["course_id"] == course_id_str)
+        assert personal_course["total"] == 1
+        assert personal_course["present"] == 1
+        assert personal_course["percentage"] == 100
+
+        another_student = await client.get(
+            f"/api/v1/attendance/student/{records[1]['student_id']}",
+            headers=student_headers,
+        )
+        assert another_student.status_code == 403
 
         records[0]["status"] = "absent"
         update_response = await client.post(
@@ -190,18 +220,18 @@ async def test_teacher_can_save_reload_and_update_daily_attendance(client: Async
         unassigned_token = create_access_token({"sub": str(unassigned_user_id), "role": "teacher"})
         unassigned_courses = await client.get("/api/v1/attendance/courses", headers={"Authorization": f"Bearer {unassigned_token}"})
         assert unassigned_courses.status_code == 200
-        assert any(course["code"] == "BCS301" for course in unassigned_courses.json())
+        assert unassigned_courses.json() == []
         saved_by_unassigned_teacher = await client.post(
             "/api/v1/attendance",
             json={"course_id": course_id_str, "date": f"{selected_date}T00:00:00Z", "records": records},
             headers={"Authorization": f"Bearer {unassigned_token}"},
         )
-        assert saved_by_unassigned_teacher.status_code == 200
+        assert saved_by_unassigned_teacher.status_code == 403
         await users.delete_one({"_id": unassigned_user_id})
     finally:
         await attendance.delete_many({"course_id": course_id_str})
-        await students.delete_many({"_id": {"$in": test_student_ids}})
-        await users.delete_many({"_id": {"$in": [teacher_user_id, *test_student_user_ids]}})
+        await students.delete_many({"_id": {"$in": [*test_student_ids, unrelated_student_id]}})
+        await users.delete_many({"_id": {"$in": [teacher_user_id, *test_student_user_ids, unrelated_user_id]}})
         await teachers.delete_one({"_id": teacher_id})
         await courses.delete_one({"_id": course_id})
 

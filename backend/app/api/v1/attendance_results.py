@@ -10,6 +10,15 @@ from typing import Optional
 router = APIRouter(prefix="/attendance", tags=["Attendance"])
 
 
+async def assert_student_can_view(student_id: str, current_user: dict) -> None:
+    """Students may only read attendance attached to their own profile."""
+    if current_user.get("role") != "student":
+        return
+    profile = await get_collection("students").find_one({"user_id": str(current_user["_id"])})
+    if not profile or str(profile["_id"]) != student_id:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="You can only view your own attendance")
+
+
 @router.post("")
 async def take_attendance(data: TakeAttendanceRequest, current_user: dict = Depends(get_current_teacher)):
     """Record or update attendance for a single course and calendar day."""
@@ -66,15 +75,17 @@ async def get_course_attendance_roster(
 async def get_student_attendance(
     student_id: str,
     course_id: Optional[str] = None,
-    _=Depends(get_current_user),
+    current_user: dict = Depends(get_current_user),
 ):
     """Get attendance records for a student"""
+    await assert_student_can_view(student_id, current_user)
     return await attendance_service.get_student_attendance(student_id, course_id)
 
 
 @router.get("/student/{student_id}/summary")
-async def get_attendance_summary(student_id: str, _=Depends(get_current_user)):
+async def get_attendance_summary(student_id: str, current_user: dict = Depends(get_current_user)):
     """Get attendance summary by course for a student"""
+    await assert_student_can_view(student_id, current_user)
     return await attendance_service.get_attendance_summary(student_id)
 
 

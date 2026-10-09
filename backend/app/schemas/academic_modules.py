@@ -107,6 +107,7 @@ class AssignmentCreate(BaseModel):
     due_date: datetime
     total_marks: float = Field(ge=1)
     file_url: Optional[str] = None
+    is_active: bool = True
 
 
 class AssignmentUpdate(BaseModel):
@@ -123,6 +124,7 @@ class AssignmentResponse(BaseModel):
     description: str
     course_id: str
     course_name: Optional[str] = None
+    course_code: Optional[str] = None
     teacher_id: str
     teacher_name: Optional[str] = None
     due_date: datetime
@@ -130,6 +132,8 @@ class AssignmentResponse(BaseModel):
     file_url: Optional[str] = None
     is_active: bool = True
     submission_count: int = 0
+    has_submitted: Optional[bool] = None
+    student_status: Optional[str] = None
     created_at: datetime
 
 

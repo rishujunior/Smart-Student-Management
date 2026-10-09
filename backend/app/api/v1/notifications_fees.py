@@ -35,6 +35,7 @@ async def list_notifications(current_user: dict = Depends(get_current_user)):
             {"target_role": "all"},
             {"target_role": role},
             {"target_role": str(current_user["_id"])},
+            {"target_user_id": str(current_user["_id"])},
         ]
     }
 

@@ -25,6 +25,7 @@ import { NoticeBoard } from './pages/notifications/NoticeBoard'
 import { ReportsPage } from './pages/reports/ReportsPage'
 import { SettingsPage } from './pages/settings/SettingsPage'
 import { Unauthorized } from './pages/auth/Unauthorized'
+import { LandingPage } from './pages/home/LandingPage'
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -83,7 +84,7 @@ const AppRoutes: React.FC = () => {
 
         <Route path="/unauthorized" element={<AnimatedPage><Unauthorized /></AnimatedPage>} />
 
-        <Route path="/" element={<Navigate to="/login" replace />} />
+        <Route path="/" element={<AnimatedPage><LandingPage /></AnimatedPage>} />
         <Route path="*" element={<Navigate to="/login" replace />} />
       </Routes>
     </AnimatePresence>

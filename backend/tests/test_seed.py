@@ -23,15 +23,15 @@ async def _seed_and_fetch():
             "teacher_id": str(teacher["_id"]),
             "is_active": {"$ne": False},
         }).to_list(length=100)
-        rishu_user = await get_collection("users").find_one({"full_name": "rishu_kumar", "role": "student"})
-        rishu_profile = await get_collection("students").find_one({"user_id": str(rishu_user["_id"])}) if rishu_user else None
-        return courses, assigned_courses, rishu_profile
+        aayush_user = await get_collection("users").find_one({"full_name": "Aayush_Singh", "role": "student"})
+        aayush_profile = await get_collection("students").find_one({"user_id": str(aayush_user["_id"])}) if aayush_user else None
+        return courses, assigned_courses, aayush_profile
     finally:
         await close_mongo_connection()
 
 
 def test_seed_creates_aktu_cse_semester_3_subjects():
-    courses, assigned_courses, rishu_profile = asyncio.run(_seed_and_fetch())
+    courses, assigned_courses, aayush_profile = asyncio.run(_seed_and_fetch())
     actual = {course["code"]: course["name"] for course in courses}
     required = {subject["code"]: subject["name"] for subject in AKTU_CSE_SEMESTER_3_SUBJECTS}
     assert len(courses) == 10
@@ -51,9 +51,9 @@ def test_seed_creates_aktu_cse_semester_3_subjects():
         "BAS101": ("Engineering Mathematics-I", 1),
         "BAS303": ("Mathematics-IV", 3),
     }
-    assert rishu_profile is not None
-    assert rishu_profile["branch"] == "CSE"
-    assert rishu_profile["semester"] == 3
+    assert aayush_profile is not None
+    assert aayush_profile["branch"] == "CSE"
+    assert aayush_profile["semester"] == 3
 
 
 async def test_teacher_courses_endpoint_returns_only_seeded_assignments(client):

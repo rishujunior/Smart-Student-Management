@@ -1,5 +1,5 @@
 import React from 'react'
-import { render, screen, waitFor, within } from '@testing-library/react'
+import { fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { MemoryRouter } from 'react-router-dom'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
@@ -117,7 +117,7 @@ describe('AttendanceManager', () => {
   })
 
   it('loads a student curriculum and personal attendance summary without using the teacher roster endpoint', async () => {
-    mockUser.current = { id: 'student-user', role: 'student', full_name: 'rishu_kumar' }
+    mockUser.current = { id: 'student-user', role: 'student', full_name: 'Aayush_Singh' }
     const studentSummary = {
       course_id: firstUnassignedCourse.id,
       course_code: firstUnassignedCourse.code,
@@ -145,5 +145,9 @@ describe('AttendanceManager', () => {
     expect(mockGet).toHaveBeenCalledWith('/attendance/student/courses')
     expect(mockGet).toHaveBeenCalledWith(`/attendance/student/courses/${firstUnassignedCourse.id}/summary`)
     expect(mockGet.mock.calls.some(([url]) => String(url).includes('/roster'))).toBe(false)
+
+    const summaryCallsBeforeFocus = mockGet.mock.calls.filter(([url]) => url.endsWith('/summary')).length
+    fireEvent.focus(window)
+    await waitFor(() => expect(mockGet.mock.calls.filter(([url]) => url.endsWith('/summary')).length).toBeGreaterThan(summaryCallsBeforeFocus))
   })
 })

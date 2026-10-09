@@ -159,6 +159,7 @@ export interface Assignment {
   description: string
   course_id: string
   course_name?: string
+  course_code?: string
   teacher_id: string
   teacher_name?: string
   due_date: string
@@ -166,6 +167,8 @@ export interface Assignment {
   file_url?: string
   is_active: boolean
   submission_count: number
+  has_submitted?: boolean
+  student_status?: 'pending' | 'overdue' | 'submitted'
   created_at: string
 }
 
@@ -190,6 +193,9 @@ export interface Notification {
   message: string
   type: string
   target_role?: string
+  target_user_id?: string
+  assignment_id?: string
+  course_id?: string
   department_id?: string
   is_read: boolean
   created_by: string

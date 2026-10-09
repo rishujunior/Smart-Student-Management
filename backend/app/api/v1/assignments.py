@@ -15,49 +15,35 @@ router = APIRouter(prefix="/assignments", tags=["Assignments"])
 @router.post("", status_code=201)
 async def create_assignment(data: AssignmentCreate, current_user: dict = Depends(get_current_teacher)):
     """Teacher: Create a new assignment"""
-    teacher = await teacher_service.get_teacher_by_user_id(str(current_user["_id"]))
-    teacher_id = teacher["id"] if teacher else str(current_user["_id"])
-    return await assignment_service.create_assignment(data.model_dump(), teacher_id)
+    return await assignment_service.create_assignment(data.model_dump(), current_user)
 
 
 @router.get("")
 async def list_assignments(
     course_id: Optional[str] = None,
     teacher_id: Optional[str] = None,
-    _=Depends(get_current_user),
+    current_user: dict = Depends(get_current_user),
 ):
     """List assignments with optional filters"""
-    return await assignment_service.list_assignments(course_id, teacher_id)
+    return await assignment_service.list_assignments(course_id, teacher_id, current_user)
 
 
 @router.get("/{assignment_id}")
-async def get_assignment(assignment_id: str, _=Depends(get_current_user)):
+async def get_assignment(assignment_id: str, current_user: dict = Depends(get_current_user)):
     """Get assignment details"""
-    from app.core.database import get_collection
-    from bson import ObjectId
-    col = get_collection("assignments")
-    assignment = await col.find_one({"_id": ObjectId(assignment_id)})
-    if not assignment:
-        raise HTTPException(status_code=404, detail="Assignment not found")
-    return await assignment_service._enrich_assignment(assignment)
+    return await assignment_service.get_assignment(assignment_id, current_user)
 
 
 @router.put("/{assignment_id}")
 async def update_assignment(
     assignment_id: str,
     data: AssignmentUpdate,
-    _=Depends(get_current_teacher),
+    current_user: dict = Depends(get_current_teacher),
 ):
     """Teacher: Update assignment"""
-    from app.core.database import get_collection
-    from bson import ObjectId
-    from datetime import datetime, timezone
-    col = get_collection("assignments")
-    updates = data.model_dump(exclude_none=True)
-    updates["updated_at"] = datetime.now(timezone.utc)
-    await col.update_one({"_id": ObjectId(assignment_id)}, {"$set": updates})
-    assignment = await col.find_one({"_id": ObjectId(assignment_id)})
-    return await assignment_service._enrich_assignment(assignment)
+    return await assignment_service.update_assignment(
+        assignment_id, data.model_dump(exclude_none=True), current_user
+    )
 
 
 @router.post("/{assignment_id}/submit")
